@@ -16,7 +16,7 @@ This keeps the first implementation window focused on browser behavior instead o
 - `content_scripts`: loaded on normal pages to capture targets and show overlay feedback.
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
-- Permissions in Phase 1: `storage`.
+- Current permissions: `storage`.
 
 Future phases should add only the permissions they need. Likely additions are `offscreen` for recording and `clipboardWrite` only when clipboard fallback is implemented.
 
@@ -37,7 +37,7 @@ Content script:
 - Performs eventual insertion or clipboard fallback.
 - Shows in-page overlay state.
 
-Offscreen document, starting in Phase 2:
+Offscreen document, when recording is implemented:
 
 - Owns `getUserMedia` and `MediaRecorder`.
 - Streams recording lifecycle events back to the service worker.
@@ -55,7 +55,7 @@ Popup:
 
 ## 4. Audio Design
 
-Manifest V3 service workers do not provide a stable DOM/media environment. Phase 2 should use an offscreen document for microphone work.
+Manifest V3 service workers do not provide a stable DOM/media environment. Recording should use an offscreen document for microphone work.
 
 Flow:
 
@@ -133,7 +133,7 @@ Repeated commands:
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-Phase 1 uses the same command path but stops before real recording.
+The current implementation uses the production command path and stops before real recording.
 
 ## 7. Target Capture and Insertion Design
 
@@ -224,7 +224,7 @@ Overlay:
 - most important UI surface;
 - visible immediately after shortcut;
 - shows state, success, warning, and error messages;
-- should auto-dismiss after success in later phases.
+- should auto-dismiss after successful dictation.
 
 Options:
 
@@ -253,7 +253,7 @@ Unit tests:
 - state transitions;
 - message envelopes;
 - settings validation;
-- prompt construction in Phase 4;
+- prompt construction when text improvement is implemented;
 - provider response parsing;
 - insertion helpers where pure.
 
@@ -285,12 +285,12 @@ Compatibility matrix should be documented before submission.
 
 P0 vertical path:
 
-1. Phase 1: manifest, service worker, content script, options storage, keyboard command, basic messaging.
-2. Phase 2: offscreen recorder, microphone permission, start/stop, cleanup, audio blob.
-3. Phase 3: Deepgram STT, provider abstraction, normalized errors.
-4. Phase 4: LLM improvement, built-in styles, raw transcript fallback.
-5. Phase 5: target capture, safe insertion, contenteditable, clipboard fallback.
-6. Phase 6: overlay and settings polish.
+1. Runtime skeleton: manifest, service worker, content script, options storage, keyboard command, basic messaging.
+2. Recording: offscreen recorder, microphone permission, start/stop, cleanup, audio blob.
+3. Speech-to-text: Deepgram STT, provider abstraction, normalized errors.
+4. Text improvement: LLM improvement, built-in styles, raw transcript fallback.
+5. Insertion: target capture, safe insertion, contenteditable, clipboard fallback.
+6. Product feedback: overlay and settings polish.
 
 P1 after stable P0:
 

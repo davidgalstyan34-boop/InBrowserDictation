@@ -1,47 +1,49 @@
-import { DictationEvent, DictationStatus, canAcceptStart, canAcceptStop, transitionStatus } from "../shared/dictation-state.js";
-import { MessageType, createEnvelope, isMessage } from "../shared/messages.js";
+import { DictationEvent, DictationStatus, transitionStatus } from "../shared/dictation-state.js";
+import { MessageType, createEnvelope, parseMessageEnvelope } from "../shared/messages.js";
 
+// Keep the authoritative session in the service worker so popup/options UI can
+// come and go without owning dictation lifecycle state.
 let currentSession = createIdleSession();
 
+const commandHandlers = Object.freeze({
+  "toggle-dictation": handleToggleCommand
+});
+
+const runtimeMessageHandlers = Object.freeze({
+  [MessageType.RUNTIME_GET_STATE]: reportRuntimeState
+});
+
+const toggleActionsByStatus = Object.freeze({
+  [DictationStatus.IDLE]: startDictationSession,
+  [DictationStatus.RECORDING]: stopDictationSession,
+  [DictationStatus.SUCCESS]: resetSession,
+  [DictationStatus.ERROR]: resetSession
+});
+
 chrome.commands.onCommand.addListener((command) => {
-  if (command === "toggle-dictation") {
-    void handleToggleCommand();
+  const handler = commandHandlers[command];
+  if (handler) {
+    handler();
   }
 });
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!isMessage(message)) {
+chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
+  const message = parseMessageEnvelope(rawMessage);
+  const handler = message ? runtimeMessageHandlers[message.type] : null;
+
+  if (!handler) {
     return false;
   }
 
-  if (message.type === MessageType.RUNTIME_GET_STATE) {
-    sendResponse({
-      ok: true,
-      session: toPublicSession(currentSession)
-    });
-    return false;
-  }
-
-  return false;
+  return handler({ message, sender, sendResponse });
 });
 
 async function handleToggleCommand() {
-  if (canAcceptStart(currentSession.status)) {
-    await startPhaseOneSession();
-    return;
-  }
-
-  if (canAcceptStop(currentSession.status)) {
-    await cancelPhaseOneSession();
-    return;
-  }
-
-  if (currentSession.status === DictationStatus.ERROR || currentSession.status === DictationStatus.SUCCESS) {
-    currentSession = createIdleSession();
-  }
+  const action = toggleActionsByStatus[currentSession.status] ?? reportBusySession;
+  await action();
 }
 
-async function startPhaseOneSession() {
+async function startDictationSession() {
   const tab = await getActiveTab();
   const sessionId = crypto.randomUUID();
 
@@ -60,6 +62,8 @@ async function startPhaseOneSession() {
   }
 
   try {
+    // Acknowledge the shortcut before doing any heavier work. Recording and
+    // provider setup can continue without making the command feel ignored.
     await sendTabMessage(tab.id, createEnvelope(
       MessageType.CONTENT_SHOW_STATE,
       {
@@ -100,7 +104,31 @@ async function startPhaseOneSession() {
   }
 }
 
-async function cancelPhaseOneSession() {
+function reportRuntimeState({ sendResponse }) {
+  sendResponse({
+    ok: true,
+    session: toPublicSession(currentSession)
+  });
+  return false;
+}
+
+async function reportBusySession() {
+  if (!currentSession.tabId) {
+    return;
+  }
+
+  await sendTabMessage(currentSession.tabId, createEnvelope(
+    MessageType.CONTENT_SHOW_STATE,
+    {
+      status: currentSession.status,
+      title: "Busy",
+      detail: "Dictation is already working"
+    },
+    currentSession.id
+  ));
+}
+
+async function stopDictationSession() {
   const session = currentSession;
   currentSession = {
     ...session,
@@ -118,11 +146,12 @@ async function cancelPhaseOneSession() {
         session.id
       ));
     } catch {
-      // The tab may have navigated or closed. Phase 5 will convert this into safe fallback behavior.
+      // The tab may have navigated or closed. Dictation should fail safely
+      // instead of targeting whichever page happens to be focused next.
     }
   }
 
-  currentSession = createIdleSession();
+  resetSession();
 }
 
 async function getActiveTab() {
@@ -140,6 +169,10 @@ function failSession(code, message) {
     status: DictationStatus.ERROR,
     error: { code, message }
   };
+}
+
+function resetSession() {
+  currentSession = createIdleSession();
 }
 
 function createIdleSession() {
@@ -165,13 +198,12 @@ function toPublicSession(session) {
 }
 
 function describePreparedTarget(target) {
-  if (!target || target.kind === "none") {
-    return "No editable target captured";
-  }
+  const kind = target?.kind ?? "none";
+  const descriptionActions = {
+    none: () => "No editable target captured",
+    blocked: () => target.reason
+  };
 
-  if (target.kind === "blocked") {
-    return target.reason;
-  }
-
-  return `${target.kind} target captured`;
+  const action = descriptionActions[kind];
+  return action ? action() : `${kind} target captured`;
 }

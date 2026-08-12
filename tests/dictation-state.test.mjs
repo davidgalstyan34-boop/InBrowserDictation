@@ -1,20 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DictationEvent, DictationStatus, canAcceptStart, canAcceptStop, transitionStatus } from "../src/shared/dictation-state.js";
+import { DictationEvent, DictationStatus, transitionStatus } from "../src/shared/dictation-state.js";
 
 describe("dictation state transitions", () => {
-  it("starts only from idle", () => {
-    assert.equal(canAcceptStart(DictationStatus.IDLE), true);
-    assert.equal(canAcceptStart(DictationStatus.STARTING), false);
-    assert.equal(canAcceptStart(DictationStatus.RECORDING), false);
-  });
-
-  it("allows stop only while recording", () => {
-    assert.equal(canAcceptStop(DictationStatus.RECORDING), true);
-    assert.equal(canAcceptStop(DictationStatus.STARTING), false);
-    assert.equal(canAcceptStop(DictationStatus.TRANSCRIBING), false);
-  });
-
   it("walks the nominal P0 pipeline", () => {
     let status = DictationStatus.IDLE;
     status = transitionStatus(status, DictationEvent.START_REQUESTED);

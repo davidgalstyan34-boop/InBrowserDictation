@@ -7,6 +7,8 @@ export const MessageType = Object.freeze({
   RUNTIME_GET_STATE: "runtime.getState"
 });
 
+const MESSAGE_TYPES = new Set(Object.values(MessageType));
+
 export function createEnvelope(type, payload = {}, sessionId = null) {
   return {
     protocolVersion: PROTOCOL_VERSION,
@@ -17,11 +19,17 @@ export function createEnvelope(type, payload = {}, sessionId = null) {
   };
 }
 
-export function isMessage(value) {
-  return Boolean(
-    value &&
-      value.protocolVersion === PROTOCOL_VERSION &&
-      typeof value.type === "string" &&
-      Object.values(MessageType).includes(value.type)
-  );
+export function parseMessageEnvelope(value) {
+  if (!value || value.protocolVersion !== PROTOCOL_VERSION) {
+    return null;
+  }
+
+  if (typeof value.type !== "string" || !MESSAGE_TYPES.has(value.type)) {
+    return null;
+  }
+
+  return {
+    ...value,
+    payload: value.payload ?? {}
+  };
 }

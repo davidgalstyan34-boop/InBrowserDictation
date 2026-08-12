@@ -63,11 +63,3 @@ const transitionTable = Object.freeze({
 export function transitionStatus(status, event) {
   return transitionTable[status]?.[event] ?? status;
 }
-
-export function canAcceptStart(status) {
-  return status === DictationStatus.IDLE;
-}
-
-export function canAcceptStop(status) {
-  return status === DictationStatus.RECORDING;
-}

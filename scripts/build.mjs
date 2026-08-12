@@ -9,6 +9,9 @@ const requiredFiles = [
   "manifest.json",
   "background/service-worker.js",
   "content/content-script.js",
+  "content/content-app.js",
+  "content/target-capture.js",
+  "content/overlay.js",
   "options/options.html",
   "options/options.js",
   "options/options.css"
@@ -27,6 +30,14 @@ if (manifest.manifest_version !== 3) {
 
 for (const file of requiredFiles) {
   await readFile(path.join(distDir, file), "utf8");
+}
+
+for (const script of manifest.content_scripts?.flatMap((item) => item.js ?? []) ?? []) {
+  await readFile(path.join(distDir, script), "utf8");
+}
+
+for (const resource of manifest.web_accessible_resources?.flatMap((item) => item.resources ?? []) ?? []) {
+  await readFile(path.join(distDir, resource), "utf8");
 }
 
 console.log(`Built extension into ${path.relative(rootDir, distDir)}`);

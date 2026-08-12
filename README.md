@@ -1,23 +1,23 @@
 # In-Browser Dictation
 
-Chrome extension for shortcut-driven dictation. Phase 1 contains the Manifest V3 skeleton, service worker, content script handshake, keyboard command, options storage, and shared state/message contracts.
+Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, and shared state/message contracts.
 
-## Current Phase
+## Current Capability
 
-Phase 1 goal:
+Current goal:
 
 ```text
 Shortcut reliably reaches the extension architecture.
 ```
 
-Recording, STT, LLM rewriting, insertion, and clipboard fallback are planned in later phases. See [docs/architecture.md](docs/architecture.md).
+Recording, STT, LLM rewriting, insertion, and clipboard fallback are upcoming milestones. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
 - Node.js 24 or newer is known to work.
 - Chrome or a Chromium browser with unpacked extensions enabled.
 
-No npm packages are required in Phase 1.
+No npm packages are required for the current build.
 
 ## Commands
 
@@ -50,11 +50,11 @@ Keys are stored with `chrome.storage.sync` for this take-home implementation. A 
 
 The default command is `Ctrl+Shift+Space` on Windows/Linux and `Command+Shift+Space` on macOS. Chrome may require you to confirm or change this shortcut at `chrome://extensions/shortcuts`.
 
-In Phase 1, pressing the shortcut on a normal webpage displays a small overlay and captures a summary of the current editable target. Pressing it again cancels the placeholder session. Audio recording starts in Phase 2.
+Pressing the shortcut on a normal webpage displays a small overlay and captures a summary of the current editable target. Pressing it again stops the current dictation session. Audio recording is the next implementation milestone.
 
 ## Privacy Notes
 
-The final product will send microphone audio to the configured STT provider and transcript text to the configured LLM provider. Phase 1 does not make provider network requests.
+The final product will send microphone audio to the configured STT provider and transcript text to the configured LLM provider. The current build does not make provider network requests.
 
 ## Known Limitations
 
