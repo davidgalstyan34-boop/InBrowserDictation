@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>In-Browser Dictation Settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="settings-header">
+        <h1>In-Browser Dictation</h1>
+        <p>Provider credentials and default rewrite style.</p>
+      </header>
+
+      <form id="settings-form" class="settings-form">
+        <section class="settings-section" aria-labelledby="stt-heading">
+          <h2 id="stt-heading">Speech To Text</h2>
+          <label for="stt-provider">Provider</label>
+          <select id="stt-provider" name="sttProvider">
+            <option value="deepgram">Deepgram</option>
+          </select>
+
+          <label for="stt-api-key">API Key</label>
+          <input id="stt-api-key" name="sttApiKey" type="password" autocomplete="off">
+        </section>
+
+        <section class="settings-section" aria-labelledby="llm-heading">
+          <h2 id="llm-heading">Text Improvement</h2>
+          <label for="llm-provider">Provider</label>
+          <select id="llm-provider" name="llmProvider">
+            <option value="openai">OpenAI</option>
+          </select>
+
+          <label for="llm-api-key">API Key</label>
+          <input id="llm-api-key" name="llmApiKey" type="password" autocomplete="off">
+        </section>
+
+        <section class="settings-section" aria-labelledby="style-heading">
+          <h2 id="style-heading">Default Style</h2>
+          <label for="default-style">Style</label>
+          <select id="default-style" name="defaultStyleId"></select>
+          <p id="style-description" class="field-note"></p>
+        </section>
+
+        <footer class="form-actions">
+          <button type="submit">Save Settings</button>
+          <p id="save-status" role="status" aria-live="polite"></p>
+        </footer>
+      </form>
+    </main>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
