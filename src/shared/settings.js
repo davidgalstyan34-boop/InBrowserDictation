@@ -1,3 +1,9 @@
+/**
+ * Built-in rewrite styles available before custom style management exists.
+ *
+ * Provider prompts are introduced in later phases; for now the options page
+ * uses these records to present stable style IDs and descriptions.
+ */
 export const BUILT_IN_STYLES = Object.freeze([
   {
     id: "default",
@@ -37,6 +43,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
 
 const BUILT_IN_STYLE_IDS = new Set(BUILT_IN_STYLES.map((style) => style.id));
 
+/**
+ * Merges stored values with defaults and repairs optional array fields.
+ */
 export function normalizeSettings(value = {}) {
   return {
     ...DEFAULT_SETTINGS,
@@ -45,6 +54,12 @@ export function normalizeSettings(value = {}) {
   };
 }
 
+/**
+ * Validates user-editable settings before they are persisted.
+ *
+ * The returned `settings` value is normalized even when validation fails so UI
+ * code can render consistent data while showing the first useful error.
+ */
 export function validateSettings(value) {
   const settings = normalizeSettings(value);
   const errors = {};
@@ -78,11 +93,18 @@ export function validateSettings(value) {
   };
 }
 
+/**
+ * Loads settings from Chrome storage, or from an injected storage adapter in
+ * tests.
+ */
 export async function loadSettings(storageArea = getDefaultStorageArea()) {
   const stored = await storageArea.get(DEFAULT_SETTINGS);
   return normalizeSettings(stored);
 }
 
+/**
+ * Validates and persists settings to Chrome storage.
+ */
 export async function saveSettings(nextSettings, storageArea = getDefaultStorageArea()) {
   const validation = validateSettings(nextSettings);
   if (!validation.ok) {

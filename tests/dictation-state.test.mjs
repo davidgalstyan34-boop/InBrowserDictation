@@ -25,4 +25,22 @@ describe("dictation state transitions", () => {
     const status = transitionStatus(DictationStatus.IMPROVING, DictationEvent.FAILED);
     assert.equal(status, DictationStatus.INSERTING);
   });
+
+  it("can finish Phase 2 after recording produces audio", () => {
+    let status = DictationStatus.RECORDING;
+    status = transitionStatus(status, DictationEvent.STOP_REQUESTED);
+    assert.equal(status, DictationStatus.STOPPING);
+
+    status = transitionStatus(status, DictationEvent.RECORDING_READY);
+    assert.equal(status, DictationStatus.SUCCESS);
+  });
+
+  it("can wait for visible microphone permission during startup", () => {
+    const status = transitionStatus(
+      DictationStatus.RECORDING,
+      DictationEvent.MICROPHONE_PERMISSION_REQUIRED
+    );
+
+    assert.equal(status, DictationStatus.WAITING_FOR_MICROPHONE);
+  });
 });

@@ -1,6 +1,12 @@
 let overlayHost = null;
 let overlayElements = null;
 
+/**
+ * Creates or updates the in-page dictation status overlay.
+ *
+ * The overlay is deliberately tiny and page-independent because it appears on
+ * arbitrary websites whose CSS should not affect extension feedback.
+ */
 export function renderDictationOverlay({ title, detail, tone = "default" }) {
   mountOverlay();
   overlayElements.title.textContent = title || "Dictation";
@@ -8,6 +14,9 @@ export function renderDictationOverlay({ title, detail, tone = "default" }) {
   overlayElements.panel.dataset.tone = tone;
 }
 
+/**
+ * Mounts the Shadow DOM overlay once and caches handles for later updates.
+ */
 function mountOverlay() {
   if (overlayElements && document.documentElement.contains(overlayHost)) {
     return;
@@ -45,6 +54,16 @@ function mountOverlay() {
       color: #47524d;
     }
 
+    [data-panel][data-tone="success"] {
+      border-color: rgba(22, 101, 52, 0.28);
+      color: #14532d;
+    }
+
+    [data-panel][data-tone="error"] {
+      border-color: rgba(185, 28, 28, 0.32);
+      color: #7f1d1d;
+    }
+
     [data-title] {
       display: block;
       font-size: 13px;
@@ -60,6 +79,14 @@ function mountOverlay() {
       line-height: 1.35;
       color: #4b5a53;
       overflow-wrap: anywhere;
+    }
+
+    [data-panel][data-tone="success"] [data-detail] {
+      color: #166534;
+    }
+
+    [data-panel][data-tone="error"] [data-detail] {
+      color: #991b1b;
     }
   `;
 

@@ -13,6 +13,13 @@ const inputTextTypes = new Set([
   "week"
 ]);
 
+/**
+ * Captures the currently focused editable target for a dictation session.
+ *
+ * The return value may include live DOM references, so callers must keep the
+ * full object inside the content script and send only `summarizeCapturedTarget`
+ * across extension messaging.
+ */
 export function captureActiveTarget() {
   const element = document.activeElement;
 
@@ -42,6 +49,9 @@ export function captureActiveTarget() {
   };
 }
 
+/**
+ * Returns capture details for supported text-like input elements.
+ */
 function captureInputTarget(element) {
   if (!(element instanceof HTMLInputElement)) {
     return null;
@@ -73,6 +83,9 @@ function captureInputTarget(element) {
   return captureTextControl(element, "input");
 }
 
+/**
+ * Returns capture details for textarea elements.
+ */
 function captureTextAreaTarget(element) {
   if (!(element instanceof HTMLTextAreaElement)) {
     return null;
@@ -88,6 +101,9 @@ function captureTextAreaTarget(element) {
   return captureTextControl(element, "textarea");
 }
 
+/**
+ * Captures a contenteditable root and its current selection range when safe.
+ */
 function captureContentEditableTarget(element) {
   const editableRoot = element.closest?.("[contenteditable=''], [contenteditable='true']");
   if (!(editableRoot instanceof HTMLElement)) {
@@ -110,6 +126,9 @@ function captureContentEditableTarget(element) {
   };
 }
 
+/**
+ * Records caret/selection positions for input-like controls.
+ */
 function captureTextControl(element, kind) {
   return {
     kind,
@@ -121,6 +140,9 @@ function captureTextControl(element, kind) {
   };
 }
 
+/**
+ * Converts a captured target into the serializable shape sent to background.
+ */
 export function summarizeCapturedTarget(target) {
   const base = {
     kind: target.kind,
@@ -155,6 +177,9 @@ function summarizeContentEditable(target, base) {
   };
 }
 
+/**
+ * Builds short overlay text for a captured target.
+ */
 export function describeCapturedTarget(target) {
   const kind = target?.kind ?? "none";
   const descriptionActions = {
@@ -166,6 +191,9 @@ export function describeCapturedTarget(target) {
   return action ? action() : `${kind} target captured`;
 }
 
+/**
+ * Creates a compact, human-readable element descriptor for diagnostics/UI.
+ */
 function describeElement(element) {
   const parts = [element.tagName.toLowerCase()];
 

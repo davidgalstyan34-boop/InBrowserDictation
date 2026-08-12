@@ -16,9 +16,9 @@ This keeps the first implementation window focused on browser behavior instead o
 - `content_scripts`: loaded on normal pages to capture targets and show overlay feedback.
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
-- Current permissions: `storage`.
+- Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`.
 
-Future phases should add only the permissions they need. Likely additions are `offscreen` for recording and `clipboardWrite` only when clipboard fallback is implemented.
+`activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need. The likely next addition is `clipboardWrite` only when clipboard fallback is implemented.
 
 ## 3. Execution Contexts
 
@@ -28,6 +28,7 @@ Service worker:
 - Keyboard command listener.
 - Active tab selection.
 - Message routing to content script.
+- On-demand content-script injection for active tabs that missed static injection.
 - Later: provider orchestration and normalized errors.
 
 Content script:
@@ -37,10 +38,11 @@ Content script:
 - Performs eventual insertion or clipboard fallback.
 - Shows in-page overlay state.
 
-Offscreen document, when recording is implemented:
+Offscreen document:
 
 - Owns `getUserMedia` and `MediaRecorder`.
-- Streams recording lifecycle events back to the service worker.
+- Receives start/stop recording messages from the service worker.
+- Returns captured audio data and metadata to the service worker.
 - Cleans up media tracks and blobs.
 
 Options page:
@@ -70,7 +72,8 @@ The recorder should:
 - choose a provider-compatible MIME type such as `audio/webm`;
 - stop all media tracks after recording;
 - reject empty or tiny recordings before STT;
-- report normalized microphone and recorder errors.
+- report normalized microphone and recorder errors;
+- return a JSON-safe audio payload because Chrome extension messaging should not depend on passing `Blob` objects directly.
 
 ## 5. Messaging Design
 
@@ -92,7 +95,11 @@ Important message families:
 - `content.cancelDictation`: clear placeholder/session UI.
 - `content.showState`: update overlay.
 - `runtime.getState`: options/popup can inspect current service-worker state.
-- Future: `offscreen.startRecording`, `offscreen.stopRecording`, `content.insertText`.
+- `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result.
+- `offscreen.getRecordingState`: recover an active recorder after service-worker suspension.
+- `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
+- `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
+- Future: `content.insertText`.
 
 Every session-bound message carries `sessionId`. Receivers ignore stale session IDs.
 
@@ -105,6 +112,7 @@ Core statuses:
 ```text
 IDLE
 STARTING
+WAITING_FOR_MICROPHONE
 RECORDING
 STOPPING
 TRANSCRIBING
@@ -133,7 +141,15 @@ Repeated commands:
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-The current implementation uses the production command path and stops before real recording.
+The Phase 2 implementation completes at `STOPPING -> SUCCESS` after a usable audio payload is captured. Phase 3 should replace that terminal recording step with `STOPPING -> TRANSCRIBING`.
+
+First-run microphone flow:
+
+```text
+STARTING -> RECORDING(target captured) -> WAITING_FOR_MICROPHONE -> RECORDING
+```
+
+Chrome requires the first microphone grant to come from a visible extension page. The service worker opens `permissions/microphone.html`, that page calls `getUserMedia({ audio: true })`, stops the test stream immediately, then reports the result back to the service worker.
 
 ## 7. Target Capture and Insertion Design
 
@@ -252,6 +268,7 @@ Unit tests:
 
 - state transitions;
 - message envelopes;
+- recording helper behavior;
 - settings validation;
 - prompt construction when text improvement is implemented;
 - provider response parsing;

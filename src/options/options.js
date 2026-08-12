@@ -1,5 +1,7 @@
 import { BUILT_IN_STYLES, loadSettings, saveSettings, validateSettings } from "../shared/settings.js";
 
+// Options page controller for provider credentials and default rewrite style.
+// It stays UI-only; validation and storage are delegated to shared/settings.js.
 const form = document.querySelector("#settings-form");
 const sttProvider = document.querySelector("#stt-provider");
 const sttApiKey = document.querySelector("#stt-api-key");
@@ -11,6 +13,9 @@ const saveStatus = document.querySelector("#save-status");
 
 initializeOptionsPage();
 
+/**
+ * Loads current settings, renders the form, and registers page events.
+ */
 async function initializeOptionsPage() {
   populateStyleOptions();
   const settings = await loadSettings();
@@ -26,6 +31,9 @@ async function initializeOptionsPage() {
   });
 }
 
+/**
+ * Populates the style select from code-defined styles.
+ */
 function populateStyleOptions() {
   for (const style of BUILT_IN_STYLES) {
     const option = document.createElement("option");
@@ -35,6 +43,9 @@ function populateStyleOptions() {
   }
 }
 
+/**
+ * Copies persisted settings into form controls.
+ */
 function renderSettings(settings) {
   sttProvider.value = settings.sttProvider;
   sttApiKey.value = settings.sttApiKey;
@@ -44,6 +55,9 @@ function renderSettings(settings) {
   updateStyleDescription(settings.defaultStyleId);
 }
 
+/**
+ * Validates and saves the form values.
+ */
 async function handleSave() {
   const nextSettings = {
     sttProvider: sttProvider.value,
