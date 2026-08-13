@@ -2,6 +2,7 @@ import {
   createSpeechToTextError,
   normalizeSpeechToTextError
 } from "./speech-to-text-errors.js";
+import { createRequestSignal } from "./request-signal.js";
 
 const DEEPGRAM_LISTEN_URL = "https://api.deepgram.com/v1/listen";
 const DEFAULT_DEEPGRAM_MODEL = "nova-3";
@@ -156,39 +157,3 @@ function getFirstAlternative(payload) {
     ?.[0] ?? null;
 }
 
-function createRequestSignal({ parentSignal, timeoutMs }) {
-  const controller = new AbortController();
-  let timeoutId = null;
-  let didTimeOut = false;
-
-  const abortFromParent = () => {
-    controller.abort(parentSignal.reason);
-  };
-
-  if (parentSignal?.aborted) {
-    controller.abort(parentSignal.reason);
-  } else if (parentSignal) {
-    parentSignal.addEventListener("abort", abortFromParent, { once: true });
-  }
-
-  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    timeoutId = setTimeout(() => {
-      didTimeOut = true;
-      controller.abort();
-    }, timeoutMs);
-  }
-
-  return {
-    signal: controller.signal,
-    timedOut: () => didTimeOut,
-    cleanup: () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      if (parentSignal) {
-        parentSignal.removeEventListener("abort", abortFromParent);
-      }
-    }
-  };
-}

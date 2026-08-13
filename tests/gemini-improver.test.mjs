@@ -26,8 +26,7 @@ describe("Gemini text improver", () => {
     assert.match(prompt.instructions, /names, dates, numbers, URLs, identifiers/);
     assert.match(prompt.instructions, /Make it concise and businesslike/);
     assert.match(prompt.userText, /<transcript>/);
-    assert.equal(prompt.input[0].role, "user");
-    assert.equal(prompt.input[0].content[0].text, prompt.userText);
+    assert.deepEqual(Object.keys(prompt), ["instructions", "userText"]);
   });
 
   it("posts code-owned instructions to Gemini Generate Content", async () => {

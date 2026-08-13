@@ -25,17 +25,6 @@ export function buildTextImprovementPrompt({ text, style }) {
       `Style: ${style?.name ?? "Default"}.`,
       style?.instructions ?? ""
     ].filter(Boolean).join("\n\n"),
-    userText,
-    input: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: userText
-          }
-        ]
-      }
-    ]
+    userText
   };
 }

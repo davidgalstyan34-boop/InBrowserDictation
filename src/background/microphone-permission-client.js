@@ -23,8 +23,7 @@ export function createMicrophonePermissionClient({
     const url = chromeApi.runtime.getURL(`${permissionPage}?sessionId=${encodeURIComponent(sessionId)}`);
 
     console.info("[In-Browser Dictation] Opening microphone permission window.", {
-      sessionId,
-      url
+      sessionId
     });
 
     if (chromeApi.windows?.create) {

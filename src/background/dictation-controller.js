@@ -125,8 +125,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
     console.info("[In-Browser Dictation] Starting session.", {
       sessionId: session.id,
-      tabId: session.tabId,
-      url: tab?.url
+      tabId: session.tabId
     });
 
     if (!tab?.id) {
@@ -348,15 +347,20 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       return false;
     }
 
-    const tab = await content.getActiveTab();
+    let recoveredTabId = Number.isInteger(recording.tabId) ? recording.tabId : null;
+    if (!Number.isInteger(recoveredTabId)) {
+      const tab = await content.getActiveTab();
+      recoveredTabId = tab?.id ?? null;
+    }
+
     console.info("[In-Browser Dictation] Recovered active offscreen recording.", {
       sessionId: recording.sessionId,
-      tabId: tab?.id
+      tabId: recoveredTabId
     });
 
     sessions.recoverRecording({
       recording,
-      tabId: tab?.id ?? null
+      tabId: recoveredTabId
     });
     return true;
   }
@@ -417,7 +421,9 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
    * Starts the offscreen recorder and shows the recording overlay.
    */
   async function startRecorderForCurrentSession(session) {
-    const recordingResponse = await recorder.start(session.id);
+    const recordingResponse = await recorder.start(session.id, {
+      tabId: session.tabId
+    });
     if (!recordingResponse?.ok) {
       throw toError(recordingResponse?.error, "Audio recording could not start.");
     }

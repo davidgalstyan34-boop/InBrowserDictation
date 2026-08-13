@@ -62,6 +62,41 @@ describe("content text insertion", () => {
     assert.equal(element.value, "changed");
   });
 
+  it("keeps successful text-control insertion when caret APIs are unavailable", async () => {
+    const events = [];
+    let copiedText = "";
+    const element = createTextControl({
+      value: "hello",
+      events
+    });
+    element.setSelectionRange = () => {
+      throw new DOMException("Selection is unavailable.", "InvalidStateError");
+    };
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "input",
+      element,
+      selectionStart: 5,
+      selectionEnd: 5,
+      valueLength: 5
+    }, " world", {
+      clipboard: {
+        writeText: async (text) => {
+          copiedText = text;
+        }
+      }
+    });
+
+    assert.deepEqual(result, {
+      method: "target",
+      targetKind: "input",
+      textLength: 6
+    });
+    assert.equal(element.value, "hello world");
+    assert.equal(copiedText, "");
+    assert.deepEqual(events.map((event) => event.type), ["beforeinput", "input"]);
+  });
+
   it("inserts into a captured contenteditable range", async () => {
     const commonAncestor = {};
     const insertedNodes = [];

@@ -149,10 +149,12 @@ Repeated commands:
 
 The Phase 5 implementation routes `IMPROVING -> INSERTING`, then completes after target insertion or clipboard fallback succeeds.
 
+Target capture happens during `STARTING`; the session moves to `RECORDING` only after the offscreen document reports that `MediaRecorder` started.
+
 First-run microphone flow:
 
 ```text
-STARTING -> RECORDING(target captured) -> WAITING_FOR_MICROPHONE -> RECORDING
+STARTING(target captured) -> WAITING_FOR_MICROPHONE -> RECORDING
 ```
 
 Chrome requires the first microphone grant to come from a visible extension page. The service worker opens `permissions/microphone.html`, that page calls `getUserMedia({ audio: true })`, stops the test stream immediately, then reports the result back to the service worker.

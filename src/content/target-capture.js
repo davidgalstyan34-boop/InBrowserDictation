@@ -1,16 +1,10 @@
+// Selection APIs are only reliable for these freeform text input types.
 const inputTextTypes = new Set([
   "",
-  "date",
-  "datetime-local",
-  "email",
-  "month",
-  "number",
   "search",
   "tel",
   "text",
-  "time",
-  "url",
-  "week"
+  "url"
 ]);
 
 /**

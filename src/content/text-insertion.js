@@ -117,7 +117,7 @@ function insertIntoTextControl(target, text, environment) {
   ].join(""));
 
   const caret = selectionStart + text.length;
-  element.setSelectionRange?.(caret, caret);
+  moveTextControlCaret(element, caret);
   dispatchInput(element, text, environment);
 
   return {
@@ -283,6 +283,19 @@ function setTextControlValue(element, value) {
   }
 
   element.value = value;
+}
+
+function moveTextControlCaret(element, caret) {
+  if (typeof element.setSelectionRange !== "function") {
+    return;
+  }
+
+  try {
+    element.setSelectionRange(caret, caret);
+  } catch {
+    // Some input types reject selection APIs even when a value update worked.
+    // The insertion itself should not be duplicated through clipboard fallback.
+  }
 }
 
 async function writeTextToClipboard(text, { clipboard, documentRef }) {

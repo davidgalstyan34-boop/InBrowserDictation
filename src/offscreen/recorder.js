@@ -77,6 +77,7 @@ async function startRecording(message) {
 
     activeRecording = {
       sessionId: message.sessionId,
+      tabId: Number.isInteger(message.payload?.tabId) ? message.payload.tabId : null,
       recorder,
       stream,
       chunks,
@@ -89,6 +90,7 @@ async function startRecording(message) {
     return {
       recording: {
         startedAt,
+        tabId: activeRecording.tabId,
         mimeType: recorder.mimeType || requestedMimeType || ""
       }
     };
@@ -134,6 +136,7 @@ async function getRecordingState() {
     recording: activeRecording
       ? {
           sessionId: activeRecording.sessionId,
+          tabId: activeRecording.tabId,
           startedAt: activeRecording.startedAt,
           mimeType: activeRecording.recorder.mimeType || ""
         }

@@ -11,15 +11,21 @@ const defaultStyle = document.querySelector("#default-style");
 const styleDescription = document.querySelector("#style-description");
 const saveStatus = document.querySelector("#save-status");
 
-initializeOptionsPage();
+void initializeOptionsPage();
 
 /**
  * Loads current settings, renders the form, and registers page events.
  */
 async function initializeOptionsPage() {
   populateStyleOptions();
-  const settings = await loadSettings();
-  renderSettings(settings);
+
+  try {
+    const settings = await loadSettings();
+    renderSettings(settings);
+  } catch (error) {
+    console.warn("[In-Browser Dictation] Could not load settings.", error);
+    showSaveStatus("Settings could not be loaded. Reload the options page and try again.");
+  }
 
   defaultStyle.addEventListener("change", () => {
     updateStyleDescription(defaultStyle.value);
@@ -70,15 +76,24 @@ async function handleSave() {
 
   const validation = validateSettings(nextSettings);
   if (!validation.ok) {
-    saveStatus.textContent = Object.values(validation.errors)[0] || "Check settings.";
+    showSaveStatus(Object.values(validation.errors)[0] || "Check settings.");
     return;
   }
 
-  await saveSettings(nextSettings);
-  saveStatus.textContent = "Settings saved.";
+  try {
+    await saveSettings(nextSettings);
+    showSaveStatus("Settings saved.");
+  } catch (error) {
+    console.warn("[In-Browser Dictation] Could not save settings.", error);
+    showSaveStatus("Settings could not be saved. Check extension storage permissions.");
+  }
 }
 
 function updateStyleDescription(styleId) {
   const selected = BUILT_IN_STYLES.find((style) => style.id === styleId);
   styleDescription.textContent = selected?.description ?? "";
+}
+
+function showSaveStatus(message) {
+  saveStatus.textContent = message;
 }

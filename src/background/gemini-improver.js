@@ -3,6 +3,7 @@ import {
   createTextImprovementError,
   normalizeTextImprovementError
 } from "./text-improvement-errors.js";
+import { createRequestSignal } from "./request-signal.js";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -191,41 +192,4 @@ function normalizeGeminiModel(model) {
 
 function isUsableText(text) {
   return typeof text === "string" && text.trim().length > 0;
-}
-
-function createRequestSignal({ parentSignal, timeoutMs }) {
-  const controller = new AbortController();
-  let timeoutId = null;
-  let didTimeOut = false;
-
-  const abortFromParent = () => {
-    controller.abort(parentSignal.reason);
-  };
-
-  if (parentSignal?.aborted) {
-    controller.abort(parentSignal.reason);
-  } else if (parentSignal) {
-    parentSignal.addEventListener("abort", abortFromParent, { once: true });
-  }
-
-  if (Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    timeoutId = setTimeout(() => {
-      didTimeOut = true;
-      controller.abort();
-    }, timeoutMs);
-  }
-
-  return {
-    signal: controller.signal,
-    timedOut: () => didTimeOut,
-    cleanup: () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-
-      if (parentSignal) {
-        parentSignal.removeEventListener("abort", abortFromParent);
-      }
-    }
-  };
 }

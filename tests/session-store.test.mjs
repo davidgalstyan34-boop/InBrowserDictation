@@ -4,36 +4,26 @@ import { DictationStatus } from "../src/shared/dictation-state.js";
 import { createSessionStore } from "../src/background/session-store.js";
 
 describe("session store", () => {
-  it("retains the Phase 2 recording-ready lifecycle", () => {
+  it("keeps startup busy until recorder metadata arrives", () => {
     const sessions = createSessionStore();
 
     const started = sessions.start({ id: "session-1", tabId: 10, startedAt: 1000 });
     assert.equal(started.status, DictationStatus.STARTING);
 
     const prepared = sessions.markTargetReady({ kind: "textarea" });
-    assert.equal(prepared.status, DictationStatus.RECORDING);
+    assert.equal(prepared.status, DictationStatus.STARTING);
 
-    const recording = sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
+    const recording = sessions.markRecording({ startedAt: 1100, tabId: 10, mimeType: "audio/webm" });
     assert.equal(recording.status, DictationStatus.RECORDING);
+    assert.equal(recording.recording.tabId, 10);
+    assert.deepEqual(sessions.toPublicSession().recording, {
+      startedAt: 1100,
+      tabId: 10,
+      mimeType: "audio/webm"
+    });
 
     const stopping = sessions.markStopping();
     assert.equal(stopping.status, DictationStatus.STOPPING);
-
-    const completed = sessions.markRecordingReady({
-      mimeType: "audio/webm",
-      sizeBytes: 4096,
-      durationMs: 2000,
-      capturedAt: 3000,
-      dataUrl: "data:audio/webm;base64,abc"
-    }, 3100);
-
-    assert.equal(completed.status, DictationStatus.SUCCESS);
-    assert.deepEqual(sessions.toPublicSession().audio, {
-      mimeType: "audio/webm",
-      sizeBytes: 4096,
-      durationMs: 2000,
-      capturedAt: 3000
-    });
   });
 
   it("tracks the Phase 5 transcription, improvement, and insertion lifecycle without exposing text", () => {

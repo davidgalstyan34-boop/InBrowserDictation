@@ -8,6 +8,8 @@ describe("dictation state transitions", () => {
     status = transitionStatus(status, DictationEvent.START_REQUESTED);
     assert.equal(status, DictationStatus.STARTING);
     status = transitionStatus(status, DictationEvent.TARGET_READY);
+    assert.equal(status, DictationStatus.STARTING);
+    status = transitionStatus(status, DictationEvent.RECORDING_STARTED);
     assert.equal(status, DictationStatus.RECORDING);
     status = transitionStatus(status, DictationEvent.STOP_REQUESTED);
     assert.equal(status, DictationStatus.STOPPING);
@@ -28,25 +30,33 @@ describe("dictation state transitions", () => {
   });
 
   it("routes raw transcript fallback into insertion when LLM improvement fails after STT", () => {
-    const status = transitionStatus(DictationStatus.IMPROVING, DictationEvent.FAILED);
+    const status = transitionStatus(
+      DictationStatus.IMPROVING,
+      DictationEvent.IMPROVEMENT_FAILED_WITH_FALLBACK
+    );
     assert.equal(status, DictationStatus.INSERTING);
   });
 
-  it("can finish Phase 2 after recording produces audio", () => {
-    let status = DictationStatus.RECORDING;
-    status = transitionStatus(status, DictationEvent.STOP_REQUESTED);
-    assert.equal(status, DictationStatus.STOPPING);
-
-    status = transitionStatus(status, DictationEvent.RECORDING_READY);
-    assert.equal(status, DictationStatus.SUCCESS);
+  it("routes non-fallback improvement failures to error", () => {
+    const status = transitionStatus(DictationStatus.IMPROVING, DictationEvent.FAILED);
+    assert.equal(status, DictationStatus.ERROR);
   });
 
   it("can wait for visible microphone permission during startup", () => {
     const status = transitionStatus(
-      DictationStatus.RECORDING,
+      DictationStatus.STARTING,
       DictationEvent.MICROPHONE_PERMISSION_REQUIRED
     );
 
     assert.equal(status, DictationStatus.WAITING_FOR_MICROPHONE);
+  });
+
+  it("starts recording after visible microphone permission succeeds", () => {
+    const status = transitionStatus(
+      DictationStatus.WAITING_FOR_MICROPHONE,
+      DictationEvent.RECORDING_STARTED
+    );
+
+    assert.equal(status, DictationStatus.RECORDING);
   });
 });

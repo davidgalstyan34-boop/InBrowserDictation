@@ -21,12 +21,13 @@ export const DictationStatus = Object.freeze({
 export const DictationEvent = Object.freeze({
   START_REQUESTED: "START_REQUESTED",
   TARGET_READY: "TARGET_READY",
+  RECORDING_STARTED: "RECORDING_STARTED",
   MICROPHONE_PERMISSION_REQUIRED: "MICROPHONE_PERMISSION_REQUIRED",
   STOP_REQUESTED: "STOP_REQUESTED",
-  RECORDING_READY: "RECORDING_READY",
   STOPPED: "STOPPED",
   TRANSCRIPT_READY: "TRANSCRIPT_READY",
   IMPROVED_TEXT_READY: "IMPROVED_TEXT_READY",
+  IMPROVEMENT_FAILED_WITH_FALLBACK: "IMPROVEMENT_FAILED_WITH_FALLBACK",
   INSERTION_DONE: "INSERTION_DONE",
   FAILED: "FAILED",
   RESET: "RESET"
@@ -37,12 +38,14 @@ const transitionTable = Object.freeze({
     [DictationEvent.START_REQUESTED]: DictationStatus.STARTING
   },
   [DictationStatus.STARTING]: {
-    [DictationEvent.TARGET_READY]: DictationStatus.RECORDING,
+    [DictationEvent.TARGET_READY]: DictationStatus.STARTING,
+    [DictationEvent.RECORDING_STARTED]: DictationStatus.RECORDING,
     [DictationEvent.MICROPHONE_PERMISSION_REQUIRED]: DictationStatus.WAITING_FOR_MICROPHONE,
     [DictationEvent.FAILED]: DictationStatus.ERROR,
     [DictationEvent.RESET]: DictationStatus.IDLE
   },
   [DictationStatus.WAITING_FOR_MICROPHONE]: {
+    [DictationEvent.RECORDING_STARTED]: DictationStatus.RECORDING,
     [DictationEvent.FAILED]: DictationStatus.ERROR,
     [DictationEvent.RESET]: DictationStatus.IDLE
   },
@@ -52,9 +55,6 @@ const transitionTable = Object.freeze({
     [DictationEvent.FAILED]: DictationStatus.ERROR
   },
   [DictationStatus.STOPPING]: {
-    // Phase 2 completes once a usable audio blob exists. Later phases should
-    // use STOPPED to continue into STT without changing the recording module.
-    [DictationEvent.RECORDING_READY]: DictationStatus.SUCCESS,
     [DictationEvent.STOPPED]: DictationStatus.TRANSCRIBING,
     [DictationEvent.FAILED]: DictationStatus.ERROR,
     [DictationEvent.RESET]: DictationStatus.IDLE
@@ -65,7 +65,8 @@ const transitionTable = Object.freeze({
   },
   [DictationStatus.IMPROVING]: {
     [DictationEvent.IMPROVED_TEXT_READY]: DictationStatus.INSERTING,
-    [DictationEvent.FAILED]: DictationStatus.INSERTING
+    [DictationEvent.IMPROVEMENT_FAILED_WITH_FALLBACK]: DictationStatus.INSERTING,
+    [DictationEvent.FAILED]: DictationStatus.ERROR
   },
   [DictationStatus.INSERTING]: {
     [DictationEvent.INSERTION_DONE]: DictationStatus.SUCCESS,

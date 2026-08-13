@@ -95,7 +95,8 @@ export function createContentClient({ chromeApi }) {
     if (!tabId) {
       console.warn("[In-Browser Dictation] Cannot show overlay without a tab id.", {
         sessionId,
-        state
+        status: state?.status ?? null,
+        tone: state?.tone ?? null
       });
       return null;
     }

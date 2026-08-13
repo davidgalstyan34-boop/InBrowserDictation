@@ -28,11 +28,13 @@ export function createOffscreenRecorderClient({
    * Ensures the offscreen document exists, then asks it to start recording for
    * the supplied dictation session.
    */
-  async function start(sessionId) {
+  async function start(sessionId, recordingContext = {}) {
     await ensureDocument();
     return await chromeApi.runtime.sendMessage(createEnvelope(
       MessageType.OFFSCREEN_START_RECORDING,
-      {},
+      {
+        tabId: Number.isInteger(recordingContext.tabId) ? recordingContext.tabId : null
+      },
       sessionId
     ));
   }
@@ -133,7 +135,7 @@ export function createOffscreenRecorderClient({
    */
   async function hasDocument(documentUrl) {
     // `runtime.getContexts` is preferred in modern Chrome. The clients fallback
-    //keeps the code readable for older MV3 examples and tests.
+    // keeps the code readable for older MV3 examples and tests.
     if (typeof chromeApi.runtime.getContexts === "function") {
       const contexts = await chromeApi.runtime.getContexts({
         contextTypes: ["OFFSCREEN_DOCUMENT"],

@@ -18,8 +18,7 @@ void commandDiagnostics.logShortcutState("service-worker-load");
 chrome.commands.onCommand.addListener((command, tab) => {
   console.info("[In-Browser Dictation] Command received.", {
     command,
-    tabId: tab?.id,
-    url: tab?.url
+    tabId: tab?.id
   });
 
   void dictationController.handleCommand(command, { tab }).catch((error) => {
