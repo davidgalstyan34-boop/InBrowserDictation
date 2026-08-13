@@ -17,8 +17,11 @@ This keeps the first implementation window focused on browser behavior instead o
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
 - Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`.
+- Current host permissions: `https://api.deepgram.com/*`.
 
 `activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need. The likely next addition is `clipboardWrite` only when clipboard fallback is implemented.
+
+The Deepgram host permission is required for Phase 3 because the service worker posts the captured audio blob to the configured STT provider.
 
 ## 3. Execution Contexts
 
@@ -141,7 +144,7 @@ Repeated commands:
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-The Phase 2 implementation completes at `STOPPING -> SUCCESS` after a usable audio payload is captured. Phase 3 should replace that terminal recording step with `STOPPING -> TRANSCRIBING`.
+The Phase 3 implementation replaces the Phase 2 terminal recording step with `STOPPING -> TRANSCRIBING`, then completes at `TRANSCRIBING -> SUCCESS` once STT returns a transcript. Phase 4 should replace that terminal transcript step with `TRANSCRIBING -> IMPROVING`.
 
 First-run microphone flow:
 

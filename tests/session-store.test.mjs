@@ -4,7 +4,7 @@ import { DictationStatus } from "../src/shared/dictation-state.js";
 import { createSessionStore } from "../src/background/session-store.js";
 
 describe("session store", () => {
-  it("tracks the Phase 2 recording lifecycle", () => {
+  it("retains the Phase 2 recording-ready lifecycle", () => {
     const sessions = createSessionStore();
 
     const started = sessions.start({ id: "session-1", tabId: 10, startedAt: 1000 });
@@ -34,6 +34,45 @@ describe("session store", () => {
       durationMs: 2000,
       capturedAt: 3000
     });
+  });
+
+  it("tracks the Phase 3 transcription lifecycle without exposing transcript text", () => {
+    const sessions = createSessionStore();
+
+    sessions.start({ id: "session-4", tabId: 44, startedAt: 1000 });
+    sessions.markTargetReady({ kind: "textarea" });
+    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping();
+
+    const transcribing = sessions.markTranscribing({
+      mimeType: "audio/webm",
+      sizeBytes: 4096,
+      durationMs: 2000,
+      capturedAt: 3000,
+      dataUrl: "data:audio/webm;base64,abc"
+    });
+
+    assert.equal(transcribing.status, DictationStatus.TRANSCRIBING);
+    assert.equal(transcribing.audio.dataUrl, "data:audio/webm;base64,abc");
+
+    const completed = sessions.markTranscriptReady({
+      transcript: "hello world",
+      providerMeta: {
+        provider: "deepgram",
+        requestId: "request-1"
+      }
+    }, 3200);
+
+    assert.equal(completed.status, DictationStatus.SUCCESS);
+    assert.equal(completed.transcription.transcript, "hello world");
+    assert.deepEqual(sessions.toPublicSession().transcription, {
+      textLength: 11,
+      providerMeta: {
+        provider: "deepgram",
+        requestId: "request-1"
+      }
+    });
+    assert.equal("transcript" in sessions.toPublicSession().transcription, false);
   });
 
   it("recovers an active offscreen recording without requiring captured page target state", () => {

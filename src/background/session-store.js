@@ -18,6 +18,8 @@ export function createSessionStore() {
     markRecording,
     markStopping,
     markRecordingReady,
+    markTranscribing,
+    markTranscriptReady,
     recoverRecording,
     fail,
     reset,
@@ -104,6 +106,37 @@ export function createSessionStore() {
   }
 
   /**
+   * Stores final audio and advances into Phase 3 transcription work.
+   *
+   * The private session keeps the data URL for the STT provider; public session
+   * snapshots expose only audio metadata.
+   */
+  function markTranscribing(audio) {
+    session = {
+      ...session,
+      status: transitionStatus(session.status, DictationEvent.STOPPED),
+      audio
+    };
+    return session;
+  }
+
+  /**
+   * Stores the transcript privately and marks the Phase 3 slice complete.
+   *
+   * Transcript text is intentionally omitted from public snapshots because UI
+   * polling should not receive dictated text unless a later feature needs it.
+   */
+  function markTranscriptReady(transcription, completedAt = Date.now()) {
+    session = {
+      ...session,
+      status: transitionStatus(session.status, DictationEvent.TRANSCRIPT_READY),
+      transcription,
+      completedAt
+    };
+    return session;
+  }
+
+  /**
    * Rebuilds enough session state to stop an already-active offscreen recorder
    * after service-worker suspension.
    */
@@ -152,6 +185,7 @@ export function createIdleSession() {
     target: null,
     recording: null,
     audio: null,
+    transcription: null,
     completedAt: null,
     error: null
   };
@@ -172,6 +206,7 @@ export function toPublicSession(session) {
     target: session.target,
     recording: session.recording,
     audio: toPublicAudio(session.audio),
+    transcription: toPublicTranscription(session.transcription),
     completedAt: session.completedAt,
     error: session.error
   };
@@ -187,5 +222,16 @@ function toPublicAudio(audio) {
     sizeBytes: audio.sizeBytes,
     durationMs: audio.durationMs,
     capturedAt: audio.capturedAt
+  };
+}
+
+function toPublicTranscription(transcription) {
+  if (!transcription) {
+    return null;
+  }
+
+  return {
+    textLength: typeof transcription.transcript === "string" ? transcription.transcript.length : 0,
+    providerMeta: transcription.providerMeta ?? null
   };
 }

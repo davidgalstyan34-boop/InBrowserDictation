@@ -9,6 +9,9 @@
     "activeTab",
     "scripting"
   ],
+  "host_permissions": [
+    "https://api.deepgram.com/*"
+  ],
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"

@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { DictationEvent, DictationStatus, transitionStatus } from "../src/shared/dictation-state.js";
 
 describe("dictation state transitions", () => {
-  it("walks the nominal P0 pipeline", () => {
+  it("walks the current Phase 3 pipeline", () => {
     let status = DictationStatus.IDLE;
     status = transitionStatus(status, DictationEvent.START_REQUESTED);
     assert.equal(status, DictationStatus.STARTING);
@@ -14,7 +14,11 @@ describe("dictation state transitions", () => {
     status = transitionStatus(status, DictationEvent.STOPPED);
     assert.equal(status, DictationStatus.TRANSCRIBING);
     status = transitionStatus(status, DictationEvent.TRANSCRIPT_READY);
-    assert.equal(status, DictationStatus.IMPROVING);
+    assert.equal(status, DictationStatus.SUCCESS);
+  });
+
+  it("keeps later LLM and insertion states available for future phases", () => {
+    let status = DictationStatus.IMPROVING;
     status = transitionStatus(status, DictationEvent.IMPROVED_TEXT_READY);
     assert.equal(status, DictationStatus.INSERTING);
     status = transitionStatus(status, DictationEvent.INSERTION_DONE);

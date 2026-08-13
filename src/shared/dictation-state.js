@@ -60,7 +60,9 @@ const transitionTable = Object.freeze({
     [DictationEvent.RESET]: DictationStatus.IDLE
   },
   [DictationStatus.TRANSCRIBING]: {
-    [DictationEvent.TRANSCRIPT_READY]: DictationStatus.IMPROVING,
+    // Phase 3 completes once STT returns a transcript. Phase 4 should route
+    // this event into IMPROVING when the LLM provider is implemented.
+    [DictationEvent.TRANSCRIPT_READY]: DictationStatus.SUCCESS,
     [DictationEvent.FAILED]: DictationStatus.ERROR
   },
   [DictationStatus.IMPROVING]: {

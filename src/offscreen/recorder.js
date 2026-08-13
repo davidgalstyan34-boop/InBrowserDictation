@@ -73,6 +73,7 @@ async function startRecording(message) {
     const recorder = new MediaRecorder(stream, createMediaRecorderOptions(requestedMimeType));
     const chunks = [];
     const startedAt = Date.now();
+    const completion = attachRecorderLifecycleHandlers({ recorder, stream, chunks, startedAt });
 
     activeRecording = {
       sessionId: message.sessionId,
@@ -80,7 +81,7 @@ async function startRecording(message) {
       stream,
       chunks,
       startedAt,
-      stopped: createStopPromise({ recorder, stream, chunks, startedAt })
+      completion
     };
 
     recorder.start(250);
@@ -122,7 +123,7 @@ async function stopRecording(message) {
     recording.recorder.stop();
   }
 
-  return await recording.stopped;
+  return await recording.completion;
 }
 
 /**
@@ -141,10 +142,10 @@ async function getRecordingState() {
 }
 
 /**
- * Converts MediaRecorder's event-driven stop lifecycle into one awaitable
- * promise used by the stop command.
+ * Attaches MediaRecorder event handlers before recording starts and returns
+ * the promise resolved by the later stop event.
  */
-function createStopPromise({ recorder, stream, chunks, startedAt }) {
+function attachRecorderLifecycleHandlers({ recorder, stream, chunks, startedAt }) {
   return new Promise((resolve, reject) => {
     recorder.addEventListener("dataavailable", (event) => {
       if (event.data?.size > 0) {

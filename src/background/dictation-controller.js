@@ -5,8 +5,9 @@ import { createContentClient } from "./content-client.js";
 import { toError } from "./errors.js";
 import { createMicrophonePermissionClient } from "./microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "./offscreen-recorder-client.js";
-import { describeRecordingState } from "./session-descriptions.js";
+import { describeRecordingState, describeTranscriptionState } from "./session-descriptions.js";
 import { createSessionStore } from "./session-store.js";
+import { createSpeechToTextClient } from "./speech-to-text-client.js";
 
 /**
  * Coordinates the background side of one dictation session.
@@ -21,6 +22,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   const content = createContentClient({ chromeApi });
   const microphonePermission = createMicrophonePermissionClient({ chromeApi });
   const recorder = createOffscreenRecorderClient({ chromeApi, clientsApi });
+  const speechToText = createSpeechToTextClient({
+    storageArea: chromeApi.storage?.sync,
+    fetchApi: globalThis.fetch?.bind(globalThis)
+  });
   const sessions = createSessionStore();
 
   const commandHandlers = Object.freeze({
@@ -95,7 +100,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Starts a new Phase 2 session:
+   * Starts a new Phase 3 session:
    * 1. capture the active tab;
    * 2. show immediate shortcut feedback;
    * 3. ask the content script to remember the insertion target;
@@ -147,10 +152,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Stops the active Phase 2 recording and stores the returned audio payload.
+   * Stops the active recording and sends the captured audio to STT.
    *
-   * Phase 3 should replace the current success terminal step with STT work, but
-   * this method should still remain responsible only for obtaining audio.
+   * Recorder ownership ends as soon as audio is serialized. Provider details
+   * stay in the STT client so this method remains lifecycle orchestration.
    */
   async function stopDictationSession() {
     const session = sessions.markStopping();
@@ -171,11 +176,24 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
         throw toError(recordingResponse?.error, "Audio recording could not stop.");
       }
 
-      const completedSession = sessions.markRecordingReady(recordingResponse.audio ?? null);
+      await recorder.close();
+
+      const transcribingSession = sessions.markTranscribing(recordingResponse.audio ?? null);
+      await content.safeShowState(transcribingSession.tabId, transcribingSession.id, {
+        status: transcribingSession.status,
+        title: "Transcribing",
+        detail: describeAudioMetadata(transcribingSession.audio)
+      });
+
+      const transcription = await speechToText.transcribe({
+        audio: transcribingSession.audio
+      });
+      const completedSession = sessions.markTranscriptReady(transcription);
+
       await content.safeShowState(completedSession.tabId, completedSession.id, {
         status: completedSession.status,
-        title: "Recording captured",
-        detail: `${describeAudioMetadata(completedSession.audio)}. STT is next.`,
+        title: "Transcript ready",
+        detail: describeTranscriptionState(completedSession.transcription),
         tone: "success"
       });
     } catch (error) {
