@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DictationStatus } from "../src/shared/dictation-state.js";
-import { createSessionStore } from "../src/background/session-store.js";
+import { createSessionStore } from "../src/background/session/store.js";
 
 describe("session store", () => {
   it("keeps startup busy until recorder metadata arrives", () => {

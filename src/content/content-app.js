@@ -3,10 +3,10 @@ import { dismissDictationOverlay, renderDictationOverlay } from "./overlay.js";
 import { captureActiveTarget, describeCapturedTarget, summarizeCapturedTarget } from "./target-capture.js";
 import { insertTextIntoCapturedTarget } from "./text-insertion.js";
 
-// Content-side session state keeps live DOM references out of the service
-// worker. Insertion uses this captured target to avoid writing into a random
-// field if focus changes while providers are processing.
-let activeSession = null;
+// Content-side target state keeps live DOM references out of the service
+// worker. It is keyed by the background session id, but it is not an
+// authoritative session; insertion only needs the originally captured target.
+let capturedTargetState = null;
 
 const messageHandlers = Object.freeze({
   [MessageType.CONTENT_SHOW_STATE]: renderStateMessage,
@@ -47,8 +47,8 @@ function renderStateMessage({ message, sendResponse }) {
  */
 function prepareDictation({ message, sendResponse }) {
   const target = captureActiveTarget();
-  activeSession = {
-    id: message.sessionId,
+  capturedTargetState = {
+    sessionId: message.sessionId,
     target,
     capturedAt: Date.now()
   };
@@ -68,8 +68,8 @@ function prepareDictation({ message, sendResponse }) {
  * Clears content-side session state when the background cancels a session.
  */
 function cancelDictation({ message, sendResponse }) {
-  runWithCurrentSession(message.sessionId, () => {
-    activeSession = null;
+  runWithCurrentCapturedTarget(message.sessionId, () => {
+    capturedTargetState = null;
     renderDictationOverlay({
       title: message.payload.title || "Cancelled",
       detail: message.payload.detail || "Dictation stopped",
@@ -87,25 +87,21 @@ function cancelDictation({ message, sendResponse }) {
  * carries metadata only so background state and overlays never echo the text.
  */
 function insertText({ message, sendResponse }) {
-  const session = activeSession;
-  if (session?.id && session.id !== message.sessionId) {
+  const targetState = capturedTargetState;
+  if (targetState?.sessionId && targetState.sessionId !== message.sessionId) {
     sendResponse({
       ok: false,
       error: {
-        code: "INSERTION_SESSION_STALE",
-        message: "A newer dictation session is active on this page."
+        code: "INSERTION_TARGET_STALE",
+        message: "A newer dictation target is active on this page."
       }
     });
     return;
   }
 
-  insertTextIntoCapturedTarget(session?.target ?? { kind: "none" }, message.payload.text)
+  insertTextIntoCapturedTarget(targetState?.target ?? { kind: "none" }, message.payload.text)
     .then((insertion) => {
-      activeSession = {
-        id: message.sessionId,
-        target: null,
-        completedAt: Date.now()
-      };
+      capturedTargetState = null;
 
       sendResponse({
         ok: true,
@@ -113,11 +109,7 @@ function insertText({ message, sendResponse }) {
       });
     })
     .catch((error) => {
-      activeSession = {
-        id: message.sessionId,
-        target: null,
-        failedAt: Date.now()
-      };
+      capturedTargetState = null;
 
       sendResponse({
         ok: false,
@@ -130,8 +122,8 @@ function insertText({ message, sendResponse }) {
  * Removes page feedback for a completed or failed session.
  */
 function dismissOverlay({ message, sendResponse }) {
-  runWithCurrentSession(message.sessionId, () => {
-    activeSession = null;
+  runWithCurrentCapturedTarget(message.sessionId, () => {
+    capturedTargetState = null;
     dismissDictationOverlay();
   });
 
@@ -141,10 +133,10 @@ function dismissOverlay({ message, sendResponse }) {
 /**
  * Guards session-bound mutations against stale messages.
  */
-function runWithCurrentSession(sessionId, action) {
+function runWithCurrentCapturedTarget(sessionId, action) {
   // Late messages can arrive after the user has started a new session. The
-  // session check prevents an old command from clearing newer page state.
-  if (!sessionId || activeSession?.id === sessionId) {
+  // id check prevents an old command from clearing newer page target state.
+  if (!sessionId || capturedTargetState?.sessionId === sessionId) {
     action();
   }
 }

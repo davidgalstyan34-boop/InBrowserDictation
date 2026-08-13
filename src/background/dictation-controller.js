@@ -1,28 +1,21 @@
-import { describeAudioMetadata, isMicrophonePermissionError } from "../shared/audio-recording.js";
-import { DictationStatus } from "../shared/dictation-state.js";
 import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
 import { createContentClient } from "./content-client.js";
-import { toError } from "./errors.js";
+import { createCommandFlow } from "./controller/command-flow.js";
+import { createProcessingFlow } from "./controller/processing-flow.js";
+import { createRecordingFlow } from "./controller/recording-flow.js";
+import { showFailureState } from "./controller/overlay-feedback.js";
 import { createMicrophonePermissionClient } from "./microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "./offscreen-recorder-client.js";
-import {
-  describeInsertionState,
-  describeOutputTextState,
-  describeRecordingState,
-  describeTranscriptionState
-} from "./session-descriptions.js";
-import { createSessionStore } from "./session-store.js";
+import { createSessionStore } from "./session/store.js";
 import { createSpeechToTextClient } from "./speech-to-text-client.js";
 import { createTextImprovementClient } from "./text-improvement-client.js";
 
 /**
- * Coordinates the background side of one dictation session.
+ * Composes the background side of one dictation session.
  *
- * The controller knows the order of operations, but delegates concrete work:
- * tab messaging belongs to content-client, session mutation belongs to
- * session-store, and microphone/offscreen details belong to
- * offscreen-recorder-client. Keeping these boundaries explicit prevents the
- * service worker entrypoint from becoming a mixed-responsibility script.
+ * Chrome event registration stays in the service worker entrypoint. This
+ * controller wires clients, state, command policy, and lifecycle flows while
+ * keeping the phase-specific async sequences in delegated modules.
  */
 export function createDictationController({ chromeApi, clientsApi, cryptoApi }) {
   const content = createContentClient({ chromeApi });
@@ -38,13 +31,36 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   });
   const sessions = createSessionStore();
 
+  const recordingFlow = createRecordingFlow({
+    content,
+    microphonePermission,
+    recorder,
+    sessions,
+    cryptoApi,
+    failSession
+  });
+  const processingFlow = createProcessingFlow({
+    content,
+    recorder,
+    speechToText,
+    textImprovement,
+    sessions,
+    failSession
+  });
+  const commandFlow = createCommandFlow({
+    content,
+    sessions,
+    recordingFlow,
+    processingFlow
+  });
+
   const commandHandlers = Object.freeze({
-    "toggle-dictation": handleToggleCommand
+    "toggle-dictation": commandFlow.handleToggleCommand
   });
 
   const runtimeMessageHandlers = Object.freeze({
     [MessageType.RUNTIME_GET_STATE]: reportRuntimeState,
-    [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: handleMicrophonePermissionResult
+    [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult
   });
 
   return {
@@ -54,9 +70,6 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
   /**
    * Handles Chrome command names from the service worker entrypoint.
-   *
-   * Unknown commands are ignored because Chrome can dispatch commands from old
-   * manifests while a developer is reloading an unpacked extension.
    */
   async function handleCommand(command, context = {}) {
     const handler = commandHandlers[command];
@@ -67,10 +80,6 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
   /**
    * Handles runtime messages owned by the background context.
-   *
-   * The return value follows Chrome's onMessage contract: `false` means no
-   * async response is pending. Message types for content/offscreen contexts are
-   * intentionally ignored here.
    */
   function handleRuntimeMessage({ rawMessage, sender, sendResponse }) {
     const message = parseMessageEnvelope(rawMessage);
@@ -84,141 +93,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Implements the user-facing shortcut toggle.
-   *
-   * If the service worker was suspended while recording, the in-memory session
-   * can be idle even though the offscreen document still owns a recorder. The
-   * recovery check lets the next shortcut stop that recorder instead of trying
-   * to create a duplicate microphone session.
-   */
-  async function handleToggleCommand({ tab } = {}) {
-    if (sessions.get().status === DictationStatus.IDLE && await recoverActiveRecording()) {
-      await stopDictationSession();
-      return;
-    }
-
-    const session = sessions.get();
-    const toggleActionsByStatus = {
-      [DictationStatus.IDLE]: () => startDictationSession({ tab }),
-      [DictationStatus.RECORDING]: stopDictationSession,
-      [DictationStatus.SUCCESS]: () => replaceTerminalSession({ tab }),
-      [DictationStatus.ERROR]: () => replaceTerminalSession({ tab })
-    };
-
-    const action = toggleActionsByStatus[session.status] ?? reportBusySession;
-    await action();
-  }
-
-  /**
-   * Starts a new Phase 5 session:
-   * 1. capture the active tab;
-   * 2. show immediate shortcut feedback;
-   * 3. ask the content script to remember the insertion target;
-   * 4. start microphone recording in the offscreen document.
-   */
-  async function startDictationSession({ tab: commandTab } = {}) {
-    const tab = commandTab ?? await content.getActiveTab();
-    const session = sessions.start({
-      id: cryptoApi.randomUUID(),
-      tabId: tab?.id ?? null
-    });
-
-    console.info("[In-Browser Dictation] Starting session.", {
-      sessionId: session.id,
-      tabId: session.tabId
-    });
-
-    if (!tab?.id) {
-      await failSession("NO_ACTIVE_TAB", "No active tab is available for dictation.");
-      return;
-    }
-
-    try {
-      await content.showState(tab.id, session.id, {
-        status: session.status,
-        title: "Starting",
-        detail: "Shortcut received"
-      });
-
-      const prepareResponse = await content.prepareDictation(tab.id, session.id);
-      if (!prepareResponse?.ok) {
-        throw toError(prepareResponse?.error, "The page could not prepare for dictation.");
-      }
-
-      const preparedSession = sessions.markTargetReady(prepareResponse.target ?? null);
-      await startRecorderForCurrentSession(preparedSession);
-    } catch (error) {
-      console.error("[In-Browser Dictation] Start failed.", error);
-      await recorder.close();
-
-      if (isMicrophonePermissionError(error)) {
-        await requestMicrophonePermission();
-        return;
-      }
-
-      await failSession(error.code || "DICTATION_START_FAILED", error.message);
-    }
-  }
-
-  /**
-   * Stops the active recording, transcribes audio, improves text, and inserts it.
-   *
-   * Recorder ownership ends as soon as audio is serialized. Provider details
-   * stay in delegated clients so this method remains lifecycle orchestration.
-   */
-  async function stopDictationSession() {
-    const session = sessions.markStopping();
-    console.info("[In-Browser Dictation] Stopping session.", {
-      sessionId: session.id,
-      tabId: session.tabId
-    });
-
-    await content.safeShowState(session.tabId, session.id, {
-      status: session.status,
-      title: "Stopping",
-      detail: "Finalizing audio"
-    });
-
-    try {
-      const recordingResponse = await recorder.stop(session.id);
-      if (!recordingResponse?.ok) {
-        throw toError(recordingResponse?.error, "Audio recording could not stop.");
-      }
-
-      await recorder.close();
-
-      const transcribingSession = sessions.markTranscribing(recordingResponse.audio ?? null);
-      await content.safeShowState(transcribingSession.tabId, transcribingSession.id, {
-        status: transcribingSession.status,
-        title: "Transcribing",
-        detail: describeAudioMetadata(transcribingSession.audio)
-      });
-
-      const transcription = await speechToText.transcribe({
-        audio: transcribingSession.audio
-      });
-      const improvingSession = sessions.markTranscriptReady(transcription);
-
-      await content.safeShowState(improvingSession.tabId, improvingSession.id, {
-        status: improvingSession.status,
-        title: "Improving",
-        detail: describeTranscriptionState(improvingSession.transcription)
-      });
-
-      await improveTextForCurrentSession(improvingSession);
-    } catch (error) {
-      console.error("[In-Browser Dictation] Stop failed.", error);
-      await failSession(error.code || "DICTATION_STOP_FAILED", error.message);
-    } finally {
-      await recorder.close();
-    }
-  }
-
-  /**
-   * Returns the public session snapshot for future popup/options UI.
-   *
-   * Audio data itself is stripped by session-store so UI surfaces can inspect
-   * status without accidentally receiving a large data URL.
+   * Returns a public session snapshot for options, diagnostics, and future UI.
    */
   function reportRuntimeState({ sendResponse }) {
     sendResponse({
@@ -229,216 +104,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Handles the result sent by the visible microphone permission page.
-   *
-   * The handler returns `true` because it answers asynchronously after retrying
-   * the recorder or moving the session to ERROR.
-   */
-  function handleMicrophonePermissionResult({ message, sendResponse }) {
-    processMicrophonePermissionResult(message)
-      .then((response) => sendResponse(response))
-      .catch((error) => {
-        console.error("[In-Browser Dictation] Microphone permission result failed.", error);
-        sendResponse({
-          ok: false,
-          error: {
-            code: error.code || "MICROPHONE_PERMISSION_RESULT_FAILED",
-            message: error.message
-          }
-        });
-      });
-
-    return true;
-  }
-
-  /**
-   * Gives user feedback when the shortcut is pressed during non-toggleable
-   * states such as STARTING or STOPPING.
-   */
-  async function reportBusySession() {
-    const session = sessions.get();
-    await content.safeShowState(session.tabId, session.id, {
-      status: session.status,
-      title: "Busy",
-      detail: "Dictation is already working"
-    });
-  }
-
-  /**
-   * Runs text improvement, then inserts improved text or raw fallback text.
-   */
-  async function improveTextForCurrentSession(session) {
-    let insertingSession = null;
-
-    try {
-      const improvement = await textImprovement.improveText({
-        text: session.transcription?.transcript ?? ""
-      });
-      insertingSession = sessions.markImprovedTextReady(improvement);
-
-    } catch (error) {
-      console.warn("[In-Browser Dictation] Text improvement failed; using raw transcript.", {
-        sessionId: session.id,
-        code: error.code || "LLM_FAILED",
-        message: error.message
-      });
-
-      insertingSession = sessions.markRawTranscriptFallback(error);
-    }
-
-    await content.safeShowState(insertingSession.tabId, insertingSession.id, {
-      status: insertingSession.status,
-      title: insertingSession.warning ? "Inserting raw transcript" : "Inserting",
-      detail: describeOutputTextState(insertingSession.outputText, insertingSession.warning),
-      tone: insertingSession.warning ? "warning" : "default"
-    });
-
-    await insertOutputTextForCurrentSession(insertingSession);
-  }
-
-  /**
-   * Sends private final text to the captured page target and completes Phase 5.
-   */
-  async function insertOutputTextForCurrentSession(session) {
-    const insertionResponse = await content.insertText(
-      session.tabId,
-      session.id,
-      session.outputText?.text ?? ""
-    );
-
-    if (!insertionResponse?.ok) {
-      throw toError(insertionResponse?.error, "Text could not be inserted.");
-    }
-
-    const completedSession = sessions.markInsertionDone(insertionResponse.insertion);
-    const usedClipboard = completedSession.insertion?.method === "clipboard";
-
-    await content.safeShowState(completedSession.tabId, completedSession.id, {
-      status: completedSession.status,
-      title: usedClipboard ? "Copied to clipboard" : "Inserted",
-      detail: describeInsertionState(completedSession.insertion, completedSession.warning),
-      tone: usedClipboard || completedSession.warning ? "warning" : "success"
-    });
-  }
-
-  /**
-   * Starts a fresh session from a terminal state in one shortcut press.
-   *
-   * The old overlay is dismissed before reset so terminal feedback from a
-   * previous tab cannot linger while the new tab shows startup feedback.
-   */
-  async function replaceTerminalSession({ tab } = {}) {
-    const previousSession = sessions.get();
-    await content.safeDismissOverlay(previousSession.tabId, previousSession.id);
-    sessions.reset();
-    await startDictationSession({ tab });
-  }
-
-  /**
-   * Rehydrates service-worker state from an already-open offscreen recorder.
-   *
-   * This is a best-effort recovery path for MV3 service-worker suspension. The
-   * recovered session intentionally has no captured DOM target because those
-   * references live only in the content script and cannot be reconstructed here.
-   */
-  async function recoverActiveRecording() {
-    const recording = await recorder.getActiveRecording();
-    if (!recording) {
-      return false;
-    }
-
-    let recoveredTabId = Number.isInteger(recording.tabId) ? recording.tabId : null;
-    if (!Number.isInteger(recoveredTabId)) {
-      const tab = await content.getActiveTab();
-      recoveredTabId = tab?.id ?? null;
-    }
-
-    console.info("[In-Browser Dictation] Recovered active offscreen recording.", {
-      sessionId: recording.sessionId,
-      tabId: recoveredTabId
-    });
-
-    sessions.recoverRecording({
-      recording,
-      tabId: recoveredTabId
-    });
-    return true;
-  }
-
-  /**
-   * Requests microphone permission from a visible extension page and pauses the
-   * current startup flow until that page reports success/failure.
-   */
-  async function requestMicrophonePermission() {
-    const session = sessions.markMicrophonePermissionNeeded();
-
-    await content.safeShowState(session.tabId, session.id, {
-      status: session.status,
-      title: "Microphone access needed",
-      detail: "A permission window was opened",
-      tone: "muted"
-    });
-
-    await microphonePermission.openPermissionWindow(session.id);
-  }
-
-  /**
-   * Retries recording after the visible permission page grants microphone
-   * access, or fails the session when the user denies access.
-   */
-  async function processMicrophonePermissionResult(message) {
-    const session = sessions.get();
-
-    if (!message.sessionId || message.sessionId !== session.id) {
-      return { ok: false, ignored: true };
-    }
-
-    if (!message.payload.granted) {
-      await failSession(
-        message.payload.error?.code || "MICROPHONE_PERMISSION_DENIED",
-        message.payload.error?.message || "Microphone permission was denied."
-      );
-      return { ok: false };
-    }
-
-    try {
-      await content.safeShowState(session.tabId, session.id, {
-        status: session.status,
-        title: "Microphone access granted",
-        detail: "Starting recording"
-      });
-
-      await startRecorderForCurrentSession(session);
-      return { ok: true };
-    } catch (error) {
-      await recorder.close();
-      await failSession(error.code || "DICTATION_START_FAILED", error.message);
-      return { ok: false };
-    }
-  }
-
-  /**
-   * Starts the offscreen recorder and shows the recording overlay.
-   */
-  async function startRecorderForCurrentSession(session) {
-    const recordingResponse = await recorder.start(session.id, {
-      tabId: session.tabId
-    });
-    if (!recordingResponse?.ok) {
-      throw toError(recordingResponse?.error, "Audio recording could not start.");
-    }
-
-    const recordingSession = sessions.markRecording(recordingResponse.recording ?? null);
-    await content.safeShowState(recordingSession.tabId, recordingSession.id, {
-      status: recordingSession.status,
-      title: "Recording",
-      detail: describeRecordingState(recordingSession)
-    });
-  }
-
-  /**
-   * Moves the session into ERROR and reports a readable failure to the page
-   * overlay when a content script is still available.
+   * Moves the session into ERROR and reports readable feedback to the page.
    */
   async function failSession(code, message) {
     const failedSession = sessions.fail({ code, message });
@@ -448,11 +114,6 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       message
     });
 
-    await content.safeShowState(failedSession.tabId, failedSession.id, {
-      status: failedSession.status,
-      title: "Dictation failed",
-      detail: message,
-      tone: "error"
-    });
+    await showFailureState(content, failedSession, message);
   }
 }
