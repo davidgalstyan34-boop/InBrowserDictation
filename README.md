@@ -1,16 +1,16 @@
 # In-Browser Dictation
 
-Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, and Deepgram speech-to-text.
+Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, Deepgram speech-to-text, and Gemini text improvement.
 
 ## Current Capability
 
 Current goal:
 
 ```text
-Shortcut -> record -> stop -> send audio to Deepgram -> obtain transcript.
+Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> text ready.
 ```
 
-LLM rewriting, insertion, and clipboard fallback are upcoming milestones. See [docs/architecture.md](docs/architecture.md).
+Insertion and clipboard fallback are upcoming milestones. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ If PowerShell blocks the `npm.ps1` shim, run `npm.cmd test` and `npm.cmd run bui
 Open the extension options page and save:
 
 - Deepgram API key for STT.
-- OpenAI API key for LLM rewriting.
+- Gemini API key for LLM rewriting.
 - Default rewrite style.
 
 Keys are stored with `chrome.storage.sync` for this take-home implementation. A production version should protect provider credentials behind a backend or authenticated service.
@@ -52,13 +52,17 @@ Keys are stored with `chrome.storage.sync` for this take-home implementation. A 
 
 The default command is `Ctrl+Shift+Space` on Windows/Linux and `Command+Shift+Space` on macOS. Chrome may require you to confirm or change this shortcut at `chrome://extensions/shortcuts`.
 
-Pressing the shortcut on a normal webpage displays a small overlay, captures a summary of the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, and reports that a transcript was captured. Chrome prompts for microphone permission the first time recording starts.
+Pressing the shortcut on a normal webpage displays a small overlay, captures a summary of the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, sends the transcript to Gemini for the selected rewrite style, and reports that text is ready. Chrome prompts for microphone permission the first time recording starts.
+
+If the selected style is Raw, the extension skips the Gemini call and keeps the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session completes with the raw transcript and shows a warning instead of failing the dictation.
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
 ## Privacy Notes
 
-The current build sends microphone audio to the configured STT provider at `https://api.deepgram.com/*`. Later phases will send transcript text to the configured LLM provider.
+The current build sends microphone audio to the configured STT provider at `https://api.deepgram.com/*` and transcript text to the configured LLM provider at `https://generativelanguage.googleapis.com/*`.
+
+The default LLM model is `gemini-3.5-flash-lite`, which is available on the Gemini API free tier. Google documents that free-tier Gemini API content may be used to improve Google products; use a paid-tier project or a backend proxy if that is not acceptable for your data.
 
 Permissions used today:
 
@@ -66,11 +70,12 @@ Permissions used today:
 - `offscreen`: records microphone audio from an offscreen document because the service worker cannot own media APIs.
 - `activeTab` and `scripting`: inject the content script into the active tab after an unpacked extension reload when the static listener is missing.
 - `https://api.deepgram.com/*`: sends recorded audio to Deepgram for speech-to-text.
+- `https://generativelanguage.googleapis.com/*`: sends transcript text to Gemini for text improvement.
 
 ## Known Limitations
 
 - Requires a saved Deepgram API key before transcription can complete.
-- No LLM rewriting yet.
+- Requires a saved Gemini API key for non-Raw text improvement styles.
 - No text insertion yet.
 - Content scripts cannot run on restricted Chrome pages such as `chrome://extensions`.
 

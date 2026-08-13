@@ -4,6 +4,7 @@ let autoDismissTimer = null;
 
 const SUCCESS_AUTO_DISMISS_MS = 3500;
 const ERROR_AUTO_DISMISS_MS = 8000;
+const WARNING_AUTO_DISMISS_MS = 8000;
 const OVERLAY_HOST_ID = "in-browser-dictation-overlay";
 
 /**
@@ -85,6 +86,11 @@ function mountOverlay() {
       color: #7f1d1d;
     }
 
+    [data-panel][data-tone="warning"] {
+      border-color: rgba(202, 138, 4, 0.36);
+      color: #713f12;
+    }
+
     [data-title] {
       display: block;
       font-size: 13px;
@@ -108,6 +114,10 @@ function mountOverlay() {
 
     [data-panel][data-tone="error"] [data-detail] {
       color: #991b1b;
+    }
+
+    [data-panel][data-tone="warning"] [data-detail] {
+      color: #854d0e;
     }
   `;
 
@@ -146,6 +156,10 @@ function getAutoDismissDelay({ status, tone }) {
 
   if (status === "ERROR" || tone === "error") {
     return ERROR_AUTO_DISMISS_MS;
+  }
+
+  if (tone === "warning") {
+    return WARNING_AUTO_DISMISS_MS;
   }
 
   return null;

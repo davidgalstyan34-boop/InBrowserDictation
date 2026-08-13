@@ -20,8 +20,26 @@ export function describeTranscriptionState(transcription) {
     : "STT";
 
   return textLength > 0
-    ? `${provider} transcript captured (${textLength} characters). Text improvement is next.`
-    : `${provider} transcript captured. Text improvement is next.`;
+    ? `${provider} transcript captured (${textLength} characters)`
+    : `${provider} transcript captured`;
+}
+
+/**
+ * Describes Phase 4 text readiness without exposing dictated content.
+ */
+export function describeOutputTextState(outputText, warning = null) {
+  const textLength = typeof outputText?.text === "string" ? outputText.text.length : 0;
+  const suffix = textLength > 0 ? ` (${textLength} characters)` : "";
+
+  if (warning) {
+    return `Raw transcript preserved${suffix}; improvement failed.`;
+  }
+
+  if (outputText?.source === "raw-style") {
+    return `Raw transcript ready${suffix}. Insertion is next.`;
+  }
+
+  return `Improved text ready${suffix}. Insertion is next.`;
 }
 
 /**

@@ -36,7 +36,7 @@ describe("session store", () => {
     });
   });
 
-  it("tracks the Phase 3 transcription lifecycle without exposing transcript text", () => {
+  it("tracks the Phase 4 transcription and improvement lifecycle without exposing text", () => {
     const sessions = createSessionStore();
 
     sessions.start({ id: "session-4", tabId: 44, startedAt: 1000 });
@@ -55,7 +55,7 @@ describe("session store", () => {
     assert.equal(transcribing.status, DictationStatus.TRANSCRIBING);
     assert.equal(transcribing.audio.dataUrl, "data:audio/webm;base64,abc");
 
-    const completed = sessions.markTranscriptReady({
+    const improving = sessions.markTranscriptReady({
       transcript: "hello world",
       providerMeta: {
         provider: "deepgram",
@@ -63,8 +63,8 @@ describe("session store", () => {
       }
     }, 3200);
 
-    assert.equal(completed.status, DictationStatus.SUCCESS);
-    assert.equal(completed.transcription.transcript, "hello world");
+    assert.equal(improving.status, DictationStatus.IMPROVING);
+    assert.equal(improving.transcription.transcript, "hello world");
     assert.deepEqual(sessions.toPublicSession().transcription, {
       textLength: 11,
       providerMeta: {
@@ -73,6 +73,71 @@ describe("session store", () => {
       }
     });
     assert.equal("transcript" in sessions.toPublicSession().transcription, false);
+
+    const completed = sessions.markImprovedTextReady({
+      text: "Hello world.",
+      source: "llm",
+      styleId: "default",
+      providerMeta: {
+        provider: "gemini",
+        responseId: "response-1"
+      }
+    }, 3300);
+
+    assert.equal(completed.status, DictationStatus.SUCCESS);
+    assert.equal(completed.outputText.text, "Hello world.");
+    assert.deepEqual(sessions.toPublicSession().outputText, {
+      textLength: 12,
+      source: "llm",
+      styleId: "default",
+      providerMeta: {
+        provider: "gemini",
+        responseId: "response-1"
+      }
+    });
+    assert.equal("text" in sessions.toPublicSession().outputText, false);
+  });
+
+  it("completes with raw transcript metadata when text improvement fails", () => {
+    const sessions = createSessionStore();
+
+    sessions.start({ id: "session-5", tabId: 55, startedAt: 1000 });
+    sessions.markTargetReady({ kind: "textarea" });
+    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping();
+    sessions.markTranscribing({
+      mimeType: "audio/webm",
+      sizeBytes: 4096,
+      durationMs: 2000,
+      capturedAt: 3000,
+      dataUrl: "data:audio/webm;base64,abc"
+    });
+    sessions.markTranscriptReady({
+      transcript: "raw transcript",
+      providerMeta: {
+        provider: "deepgram"
+      }
+    });
+
+    const completed = sessions.markRawTranscriptFallback({
+      code: "LLM_RATE_LIMITED",
+      message: "Gemini rate limit reached."
+    }, 3300);
+
+    assert.equal(completed.status, DictationStatus.SUCCESS);
+    assert.equal(completed.outputText.text, "raw transcript");
+    assert.deepEqual(sessions.toPublicSession().outputText, {
+      textLength: 14,
+      source: "raw-transcript",
+      styleId: "raw",
+      providerMeta: {
+        provider: "deepgram"
+      }
+    });
+    assert.deepEqual(sessions.toPublicSession().warning, {
+      code: "LLM_RATE_LIMITED",
+      message: "Gemini rate limit reached."
+    });
   });
 
   it("recovers an active offscreen recording without requiring captured page target state", () => {

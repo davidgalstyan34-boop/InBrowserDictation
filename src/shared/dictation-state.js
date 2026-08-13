@@ -60,14 +60,14 @@ const transitionTable = Object.freeze({
     [DictationEvent.RESET]: DictationStatus.IDLE
   },
   [DictationStatus.TRANSCRIBING]: {
-    // Phase 3 completes once STT returns a transcript. Phase 4 should route
-    // this event into IMPROVING when the LLM provider is implemented.
-    [DictationEvent.TRANSCRIPT_READY]: DictationStatus.SUCCESS,
+    [DictationEvent.TRANSCRIPT_READY]: DictationStatus.IMPROVING,
     [DictationEvent.FAILED]: DictationStatus.ERROR
   },
   [DictationStatus.IMPROVING]: {
-    [DictationEvent.IMPROVED_TEXT_READY]: DictationStatus.INSERTING,
-    [DictationEvent.FAILED]: DictationStatus.INSERTING
+    // Phase 4 completes once improved text is ready. Phase 5 should route this
+    // event into INSERTING when DOM insertion/clipboard fallback is implemented.
+    [DictationEvent.IMPROVED_TEXT_READY]: DictationStatus.SUCCESS,
+    [DictationEvent.FAILED]: DictationStatus.SUCCESS
   },
   [DictationStatus.INSERTING]: {
     [DictationEvent.INSERTION_DONE]: DictationStatus.SUCCESS,

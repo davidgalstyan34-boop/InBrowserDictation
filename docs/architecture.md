@@ -17,11 +17,11 @@ This keeps the first implementation window focused on browser behavior instead o
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
 - Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`.
-- Current host permissions: `https://api.deepgram.com/*`.
+- Current host permissions: `https://api.deepgram.com/*`, `https://generativelanguage.googleapis.com/*`.
 
 `activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need. The likely next addition is `clipboardWrite` only when clipboard fallback is implemented.
 
-The Deepgram host permission is required for Phase 3 because the service worker posts the captured audio blob to the configured STT provider.
+The Deepgram host permission is required for Phase 3 because the service worker posts the captured audio blob to the configured STT provider. The Google Generative Language host permission is required for Phase 4 because the service worker posts transcript text to the configured Gemini provider.
 
 ## 3. Execution Contexts
 
@@ -96,6 +96,7 @@ Important message families:
 
 - `content.prepareDictation`: capture target and show immediate feedback.
 - `content.cancelDictation`: clear placeholder/session UI.
+- `content.dismissOverlay`: remove terminal overlay feedback before a replacement session starts.
 - `content.showState`: update overlay.
 - `runtime.getState`: options/popup can inspect current service-worker state.
 - `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result.
@@ -144,7 +145,7 @@ Repeated commands:
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-The Phase 3 implementation replaces the Phase 2 terminal recording step with `STOPPING -> TRANSCRIBING`, then completes at `TRANSCRIBING -> SUCCESS` once STT returns a transcript. Phase 4 should replace that terminal transcript step with `TRANSCRIBING -> IMPROVING`.
+The Phase 4 implementation replaces the Phase 3 terminal transcript step with `TRANSCRIBING -> IMPROVING`, then completes at `IMPROVING -> SUCCESS` once improved text is ready. Phase 5 should replace that terminal improved-text step with `IMPROVING -> INSERTING`.
 
 First-run microphone flow:
 
@@ -206,7 +207,14 @@ Interface:
 improveText({ text, style, settings, signal }) -> { text, providerMeta }
 ```
 
-Initial provider: OpenAI-compatible Responses API.
+Initial provider: Gemini Generate Content API.
+
+Current request shape:
+
+- `POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`;
+- `x-goog-api-key` header, rather than a query-string key;
+- code-owned `systemInstruction` plus transcript `contents`;
+- `store: false`.
 
 Prompt rules:
 
@@ -217,6 +225,8 @@ Prompt rules:
 
 If LLM fails after STT succeeds, insert or copy the raw transcript and show a non-destructive warning.
 
+Phase 4 preserves that fallback as private session output with a warning overlay. Phase 5 will insert or copy that output.
+
 ## 10. Storage Model
 
 Minimal settings:
@@ -225,7 +235,7 @@ Minimal settings:
 {
   sttProvider: "deepgram",
   sttApiKey: "",
-  llmProvider: "openai",
+  llmProvider: "gemini",
   llmApiKey: "",
   defaultStyleId: "default",
   customStyles: []
@@ -263,6 +273,8 @@ Popup:
 - Store user-entered keys in extension storage for this take-home version.
 - Document that production credentials should be backend-protected.
 - Be explicit that audio goes to STT and transcript text goes to LLM.
+- Gemini free-tier content may be used to improve Google products; use paid-tier Gemini credentials or a backend proxy for stricter data handling.
+- Keep transcript and improved text out of logs and public runtime state snapshots.
 - Keep host permissions and Chrome permissions minimal.
 
 ## 13. Testing

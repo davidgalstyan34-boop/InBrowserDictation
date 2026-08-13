@@ -10,7 +10,8 @@
     "scripting"
   ],
   "host_permissions": [
-    "https://api.deepgram.com/*"
+    "https://api.deepgram.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js",

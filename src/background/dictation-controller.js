@@ -5,9 +5,14 @@ import { createContentClient } from "./content-client.js";
 import { toError } from "./errors.js";
 import { createMicrophonePermissionClient } from "./microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "./offscreen-recorder-client.js";
-import { describeRecordingState, describeTranscriptionState } from "./session-descriptions.js";
+import {
+  describeOutputTextState,
+  describeRecordingState,
+  describeTranscriptionState
+} from "./session-descriptions.js";
 import { createSessionStore } from "./session-store.js";
 import { createSpeechToTextClient } from "./speech-to-text-client.js";
+import { createTextImprovementClient } from "./text-improvement-client.js";
 
 /**
  * Coordinates the background side of one dictation session.
@@ -23,6 +28,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   const microphonePermission = createMicrophonePermissionClient({ chromeApi });
   const recorder = createOffscreenRecorderClient({ chromeApi, clientsApi });
   const speechToText = createSpeechToTextClient({
+    storageArea: chromeApi.storage?.sync,
+    fetchApi: globalThis.fetch?.bind(globalThis)
+  });
+  const textImprovement = createTextImprovementClient({
     storageArea: chromeApi.storage?.sync,
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
@@ -100,7 +109,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Starts a new Phase 3 session:
+   * Starts a new Phase 4 session:
    * 1. capture the active tab;
    * 2. show immediate shortcut feedback;
    * 3. ask the content script to remember the insertion target;
@@ -152,10 +161,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Stops the active recording and sends the captured audio to STT.
+   * Stops the active recording, transcribes audio, and improves the transcript.
    *
    * Recorder ownership ends as soon as audio is serialized. Provider details
-   * stay in the STT client so this method remains lifecycle orchestration.
+   * stay in delegated clients so this method remains lifecycle orchestration.
    */
   async function stopDictationSession() {
     const session = sessions.markStopping();
@@ -188,14 +197,15 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       const transcription = await speechToText.transcribe({
         audio: transcribingSession.audio
       });
-      const completedSession = sessions.markTranscriptReady(transcription);
+      const improvingSession = sessions.markTranscriptReady(transcription);
 
-      await content.safeShowState(completedSession.tabId, completedSession.id, {
-        status: completedSession.status,
-        title: "Transcript ready",
-        detail: describeTranscriptionState(completedSession.transcription),
-        tone: "success"
+      await content.safeShowState(improvingSession.tabId, improvingSession.id, {
+        status: improvingSession.status,
+        title: "Improving",
+        detail: describeTranscriptionState(improvingSession.transcription)
       });
+
+      await improveTextForCurrentSession(improvingSession);
     } catch (error) {
       console.error("[In-Browser Dictation] Stop failed.", error);
       await failSession(error.code || "DICTATION_STOP_FAILED", error.message);
@@ -252,6 +262,39 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       title: "Busy",
       detail: "Dictation is already working"
     });
+  }
+
+  /**
+   * Runs Phase 4 text improvement with a raw-transcript fallback.
+   */
+  async function improveTextForCurrentSession(session) {
+    try {
+      const improvement = await textImprovement.improveText({
+        text: session.transcription?.transcript ?? ""
+      });
+      const completedSession = sessions.markImprovedTextReady(improvement);
+
+      await content.safeShowState(completedSession.tabId, completedSession.id, {
+        status: completedSession.status,
+        title: "Text ready",
+        detail: describeOutputTextState(completedSession.outputText),
+        tone: "success"
+      });
+    } catch (error) {
+      console.warn("[In-Browser Dictation] Text improvement failed; using raw transcript.", {
+        sessionId: session.id,
+        code: error.code || "LLM_FAILED",
+        message: error.message
+      });
+
+      const fallbackSession = sessions.markRawTranscriptFallback(error);
+      await content.safeShowState(fallbackSession.tabId, fallbackSession.id, {
+        status: fallbackSession.status,
+        title: "Raw transcript ready",
+        detail: describeOutputTextState(fallbackSession.outputText, fallbackSession.warning),
+        tone: "warning"
+      });
+    }
   }
 
   /**

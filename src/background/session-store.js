@@ -20,6 +20,8 @@ export function createSessionStore() {
     markRecordingReady,
     markTranscribing,
     markTranscriptReady,
+    markImprovedTextReady,
+    markRawTranscriptFallback,
     recoverRecording,
     fail,
     reset,
@@ -121,10 +123,7 @@ export function createSessionStore() {
   }
 
   /**
-   * Stores the transcript privately and marks the Phase 3 slice complete.
-   *
-   * Transcript text is intentionally omitted from public snapshots because UI
-   * polling should not receive dictated text unless a later feature needs it.
+   * Stores the transcript privately and advances into text improvement.
    */
   function markTranscriptReady(transcription, completedAt = Date.now()) {
     session = {
@@ -132,6 +131,52 @@ export function createSessionStore() {
       status: transitionStatus(session.status, DictationEvent.TRANSCRIPT_READY),
       transcription,
       completedAt
+    };
+    return session;
+  }
+
+  /**
+   * Stores improved text privately and completes the Phase 4 slice.
+   *
+   * Public snapshots expose only length/source metadata so transcript and
+   * improved text do not leak to passive UI polling.
+   */
+  function markImprovedTextReady(improvement, completedAt = Date.now()) {
+    session = {
+      ...session,
+      status: transitionStatus(session.status, DictationEvent.IMPROVED_TEXT_READY),
+      improvement,
+      outputText: createOutputText({
+        text: improvement?.text,
+        source: improvement?.source ?? "llm",
+        styleId: improvement?.styleId ?? null,
+        providerMeta: improvement?.providerMeta ?? null
+      }),
+      completedAt,
+      warning: null
+    };
+    return session;
+  }
+
+  /**
+   * Completes Phase 4 with the raw transcript when LLM improvement fails.
+   */
+  function markRawTranscriptFallback(error, completedAt = Date.now()) {
+    const transcript = session.transcription?.transcript ?? "";
+    session = {
+      ...session,
+      status: transitionStatus(session.status, DictationEvent.FAILED),
+      outputText: createOutputText({
+        text: transcript,
+        source: "raw-transcript",
+        styleId: "raw",
+        providerMeta: session.transcription?.providerMeta ?? null
+      }),
+      completedAt,
+      warning: {
+        code: error?.code ?? "LLM_FAILED",
+        message: error?.message ?? "Text improvement failed. The raw transcript is still available."
+      }
     };
     return session;
   }
@@ -186,7 +231,10 @@ export function createIdleSession() {
     recording: null,
     audio: null,
     transcription: null,
+    improvement: null,
+    outputText: null,
     completedAt: null,
+    warning: null,
     error: null
   };
 }
@@ -207,7 +255,10 @@ export function toPublicSession(session) {
     recording: session.recording,
     audio: toPublicAudio(session.audio),
     transcription: toPublicTranscription(session.transcription),
+    improvement: toPublicImprovement(session.improvement),
+    outputText: toPublicOutputText(session.outputText),
     completedAt: session.completedAt,
+    warning: session.warning,
     error: session.error
   };
 }
@@ -233,5 +284,40 @@ function toPublicTranscription(transcription) {
   return {
     textLength: typeof transcription.transcript === "string" ? transcription.transcript.length : 0,
     providerMeta: transcription.providerMeta ?? null
+  };
+}
+
+function createOutputText({ text, source, styleId, providerMeta }) {
+  return {
+    text: typeof text === "string" ? text : "",
+    source,
+    styleId,
+    providerMeta
+  };
+}
+
+function toPublicImprovement(improvement) {
+  if (!improvement) {
+    return null;
+  }
+
+  return {
+    textLength: typeof improvement.text === "string" ? improvement.text.length : 0,
+    source: improvement.source ?? "llm",
+    styleId: improvement.styleId ?? null,
+    providerMeta: improvement.providerMeta ?? null
+  };
+}
+
+function toPublicOutputText(outputText) {
+  if (!outputText) {
+    return null;
+  }
+
+  return {
+    textLength: typeof outputText.text === "string" ? outputText.text.length : 0,
+    source: outputText.source,
+    styleId: outputText.styleId,
+    providerMeta: outputText.providerMeta ?? null
   };
 }

@@ -1,41 +1,49 @@
 /**
  * Built-in rewrite styles available before custom style management exists.
  *
- * Provider prompts are introduced in later phases; for now the options page
- * uses these records to present stable style IDs and descriptions.
+ * Provider modules use these records as code-owned rewrite instructions while
+ * the options page uses them to present stable style IDs and descriptions.
  */
 export const BUILT_IN_STYLES = Object.freeze([
   {
     id: "default",
     name: "Default",
-    description: "Natural cleanup while preserving tone."
+    description: "Natural cleanup while preserving tone.",
+    instructions: "Clean up speech-to-text artifacts, punctuation, and casing while preserving the speaker's original tone."
   },
   {
     id: "professional",
     name: "Professional",
-    description: "Concise, polished, and businesslike."
+    description: "Concise, polished, and businesslike.",
+    instructions: "Make the text concise, polished, and businesslike without making it stiff or adding new claims."
   },
   {
     id: "email",
     name: "Email",
-    description: "Clear structure suitable for email."
+    description: "Clear structure suitable for email.",
+    instructions: "Format the text as a clear email-ready message, using paragraphs where useful but no subject line unless one is already present."
   },
   {
     id: "casual",
     name: "Casual",
-    description: "Conversational with minimal rewriting."
+    description: "Conversational with minimal rewriting.",
+    instructions: "Keep the text conversational and lightly edited, changing only what improves readability."
   },
   {
     id: "raw",
     name: "Raw",
-    description: "Bypass rewriting where practical."
+    description: "Bypass rewriting where practical.",
+    instructions: "Return the transcript unchanged."
   }
 ]);
+
+export const SUPPORTED_STT_PROVIDERS = Object.freeze(["deepgram"]);
+export const SUPPORTED_LLM_PROVIDERS = Object.freeze(["gemini"]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
   sttProvider: "deepgram",
   sttApiKey: "",
-  llmProvider: "openai",
+  llmProvider: "gemini",
   llmApiKey: "",
   defaultStyleId: "default",
   customStyles: []
@@ -47,9 +55,26 @@ const BUILT_IN_STYLE_IDS = new Set(BUILT_IN_STYLES.map((style) => style.id));
  * Merges stored values with defaults and repairs optional array fields.
  */
 export function normalizeSettings(value = {}) {
+  const sttProvider = normalizeProvider(
+    value.sttProvider,
+    SUPPORTED_STT_PROVIDERS,
+    DEFAULT_SETTINGS.sttProvider
+  );
+  const llmProvider = normalizeProvider(
+    value.llmProvider,
+    SUPPORTED_LLM_PROVIDERS,
+    DEFAULT_SETTINGS.llmProvider
+  );
+  const obsoleteSttProvider = typeof value.sttProvider === "string" && value.sttProvider !== sttProvider;
+  const obsoleteLlmProvider = typeof value.llmProvider === "string" && value.llmProvider !== llmProvider;
+
   return {
     ...DEFAULT_SETTINGS,
     ...value,
+    sttProvider,
+    sttApiKey: obsoleteSttProvider ? "" : value.sttApiKey ?? "",
+    llmProvider,
+    llmApiKey: obsoleteLlmProvider ? "" : value.llmApiKey ?? "",
     customStyles: Array.isArray(value.customStyles) ? value.customStyles : []
   };
 }
@@ -94,6 +119,21 @@ export function validateSettings(value) {
 }
 
 /**
+ * Resolves the selected rewrite style from normalized settings.
+ *
+ * Built-in styles are preferred over custom styles with the same id so P0/P1
+ * behavior remains stable even if later custom-style management allows edits.
+ */
+export function resolveRewriteStyle(settingsValue = {}) {
+  const settings = normalizeSettings(settingsValue);
+  const customStyles = settings.customStyles.filter(isCompleteCustomStyle);
+
+  return BUILT_IN_STYLES.find((style) => style.id === settings.defaultStyleId)
+    ?? customStyles.find((style) => style.id === settings.defaultStyleId)
+    ?? BUILT_IN_STYLES[0];
+}
+
+/**
  * Loads settings from Chrome storage, or from an injected storage adapter in
  * tests.
  */
@@ -121,4 +161,12 @@ function getDefaultStorageArea() {
     throw new Error("chrome.storage.sync is unavailable.");
   }
   return storageArea;
+}
+
+function isCompleteCustomStyle(style) {
+  return Boolean(style?.id && style.name && style.instructions);
+}
+
+function normalizeProvider(value, supportedProviders, fallback) {
+  return supportedProviders.includes(value) ? value : fallback;
 }
