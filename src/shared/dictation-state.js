@@ -82,10 +82,20 @@ const transitionTable = Object.freeze({
 
 /**
  * Applies one state-machine event to the current status.
- *
- * Unknown transitions intentionally leave the status unchanged. That lets the
- * controller safely ignore repeated shortcut presses during busy states.
  */
 export function transitionStatus(status, event) {
-  return transitionTable[status]?.[event] ?? status;
+  const nextStatus = transitionTable[status]?.[event];
+  if (nextStatus) {
+    return nextStatus;
+  }
+
+  throw createInvalidTransitionError(status, event);
+}
+
+function createInvalidTransitionError(status, event) {
+  const error = new Error(`Invalid dictation session transition: ${status} -> ${event}.`);
+  error.code = "INVALID_SESSION_TRANSITION";
+  error.status = status;
+  error.event = event;
+  return error;
 }

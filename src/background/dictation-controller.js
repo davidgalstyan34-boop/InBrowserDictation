@@ -36,22 +36,21 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     microphonePermission,
     recorder,
     sessions,
-    cryptoApi,
     failSession
   });
   const processingFlow = createProcessingFlow({
     content,
-    recorder,
     speechToText,
     textImprovement,
-    sessions,
-    failSession
+    sessions
   });
   const commandFlow = createCommandFlow({
     content,
     sessions,
     recordingFlow,
-    processingFlow
+    processingFlow,
+    cryptoApi,
+    failSession
   });
 
   const commandHandlers = Object.freeze({

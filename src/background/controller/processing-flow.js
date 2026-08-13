@@ -3,64 +3,40 @@ import {
   showImprovingState,
   showInsertionCompleteState,
   showInsertionReadyState,
-  showStoppingState,
   showTranscribingState
 } from "./overlay-feedback.js";
 
 /**
- * Owns the stop-recording to final-insertion pipeline.
+ * Owns the stopped-audio to final-insertion pipeline.
  *
- * Recorder ownership ends as soon as audio is serialized. Provider details stay
- * in delegated clients, while this flow applies the lifecycle ordering.
+ * Recording has already stopped before this flow runs. Provider details stay in
+ * delegated clients, while this module applies transcription, improvement, raw
+ * transcript fallback, and insertion ordering.
  */
 export function createProcessingFlow({
   content,
-  recorder,
   speechToText,
   textImprovement,
-  sessions,
-  failSession
+  sessions
 }) {
   return {
-    stopDictationSession
+    processStoppedRecording
   };
 
   /**
-   * Stops recording, transcribes audio, improves text, and inserts final output.
+   * Transcribes stopped audio, improves text, and inserts final output.
    */
-  async function stopDictationSession() {
-    const session = sessions.markStopping();
-    console.info("[In-Browser Dictation] Stopping session.", {
-      sessionId: session.id,
-      tabId: session.tabId
+  async function processStoppedRecording(audio) {
+    const transcribingSession = sessions.markTranscribing(audio);
+    await showTranscribingState(content, transcribingSession);
+
+    const transcription = await speechToText.transcribe({
+      audio: transcribingSession.audio
     });
+    const improvingSession = sessions.markTranscriptReady(transcription);
 
-    await showStoppingState(content, session);
-
-    try {
-      const recordingResponse = await recorder.stop(session.id);
-      if (!recordingResponse?.ok) {
-        throw toError(recordingResponse?.error, "Audio recording could not stop.");
-      }
-
-      await recorder.close();
-
-      const transcribingSession = sessions.markTranscribing(recordingResponse.audio ?? null);
-      await showTranscribingState(content, transcribingSession);
-
-      const transcription = await speechToText.transcribe({
-        audio: transcribingSession.audio
-      });
-      const improvingSession = sessions.markTranscriptReady(transcription);
-
-      await showImprovingState(content, improvingSession);
-      await improveTextForCurrentSession(improvingSession);
-    } catch (error) {
-      console.error("[In-Browser Dictation] Stop failed.", error);
-      await failSession(error.code || "DICTATION_STOP_FAILED", error.message);
-    } finally {
-      await recorder.close();
-    }
+    await showImprovingState(content, improvingSession);
+    await improveTextForCurrentSession(improvingSession);
   }
 
   /**

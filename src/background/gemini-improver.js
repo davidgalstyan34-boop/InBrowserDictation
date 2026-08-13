@@ -46,7 +46,7 @@ export async function improveTextWithGemini({
   }
 
   const prompt = buildTextImprovementPrompt({ text, style });
-  const model = normalizeGeminiModel(settings?.llmModel) || DEFAULT_GEMINI_MODEL;
+  const model = DEFAULT_GEMINI_MODEL;
   const requestSignal = createRequestSignal({ parentSignal: signal, timeoutMs });
 
   try {
@@ -180,14 +180,6 @@ function createGeminiProviderMeta(payload, requestedModel) {
 
 function createGeminiGenerateContentUrl(model) {
   return `${GEMINI_API_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
-}
-
-function normalizeGeminiModel(model) {
-  if (typeof model !== "string") {
-    return "";
-  }
-
-  return model.trim().replace(/^models\//, "");
 }
 
 function isUsableText(text) {

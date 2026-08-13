@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DictationStatus } from "../src/shared/dictation-state.js";
+import { DictationEvent, DictationStatus } from "../src/shared/dictation-state.js";
 import { createSessionStore } from "../src/background/session/store.js";
 
 describe("session store", () => {
@@ -188,5 +188,61 @@ describe("session store", () => {
 
     assert.equal(waiting.status, DictationStatus.WAITING_FOR_MICROPHONE);
     assert.equal(waiting.target.kind, "input");
+  });
+
+  it("rejects invalid lifecycle mutations before changing session data", () => {
+    const sessions = createSessionStore();
+
+    assert.throws(
+      () => sessions.markStopping(),
+      {
+        code: "INVALID_SESSION_TRANSITION",
+        status: DictationStatus.IDLE,
+        event: DictationEvent.STOP_REQUESTED
+      }
+    );
+
+    assert.equal(sessions.get().status, DictationStatus.IDLE);
+    assert.equal(sessions.get().recording, null);
+  });
+
+  it("keeps terminal sessions stable when late failures arrive", () => {
+    const sessions = createSessionStore();
+
+    sessions.start({ id: "session-terminal", tabId: 66 });
+    sessions.markTargetReady({ kind: "textarea" });
+    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping();
+    sessions.markTranscribing({
+      mimeType: "audio/webm",
+      sizeBytes: 4096,
+      durationMs: 2000,
+      capturedAt: 3000,
+      dataUrl: "data:audio/webm;base64,abc"
+    });
+    sessions.markTranscriptReady({
+      transcript: "hello world",
+      providerMeta: { provider: "deepgram" }
+    });
+    sessions.markImprovedTextReady({
+      text: "Hello world.",
+      source: "llm",
+      styleId: "default",
+      providerMeta: { provider: "gemini" }
+    });
+    const completed = sessions.markInsertionDone({
+      method: "target",
+      targetKind: "textarea",
+      textLength: 12
+    });
+
+    const afterLateFailure = sessions.fail({
+      code: "LATE_FAILURE",
+      message: "A late failure should not overwrite success."
+    });
+
+    assert.equal(afterLateFailure, completed);
+    assert.equal(afterLateFailure.status, DictationStatus.SUCCESS);
+    assert.equal(afterLateFailure.error, null);
   });
 });

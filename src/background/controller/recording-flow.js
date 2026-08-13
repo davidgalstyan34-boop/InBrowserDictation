@@ -18,56 +18,30 @@ export function createRecordingFlow({
   microphonePermission,
   recorder,
   sessions,
-  cryptoApi,
   failSession
 }) {
   return {
+    closeRecorder,
     handleMicrophonePermissionResult,
+    handleStartFailure,
+    prepareSessionForRecording,
     recoverActiveRecording,
-    startDictationSession
+    startRecordingForSession,
+    stopRecordingForSession
   };
 
   /**
-   * Starts a new session and asks the offscreen document to record audio.
+   * Captures the content-side insertion target before recording begins.
    */
-  async function startDictationSession({ tab: commandTab } = {}) {
-    const tab = commandTab ?? await content.getActiveTab();
-    const session = sessions.start({
-      id: cryptoApi.randomUUID(),
-      tabId: tab?.id ?? null
-    });
+  async function prepareSessionForRecording(session, tabId) {
+    await showStartingState(content, session);
 
-    console.info("[In-Browser Dictation] Starting session.", {
-      sessionId: session.id,
-      tabId: session.tabId
-    });
-
-    if (!tab?.id) {
-      await failSession("NO_ACTIVE_TAB", "No active tab is available for dictation.");
-      return;
+    const prepareResponse = await content.prepareDictation(tabId, session.id);
+    if (!prepareResponse?.ok) {
+      throw toError(prepareResponse?.error, "The page could not prepare for dictation.");
     }
 
-    try {
-      await showStartingState(content, session);
-
-      const prepareResponse = await content.prepareDictation(tab.id, session.id);
-      if (!prepareResponse?.ok) {
-        throw toError(prepareResponse?.error, "The page could not prepare for dictation.");
-      }
-
-      const preparedSession = sessions.markTargetReady(prepareResponse.target ?? null);
-      await startRecorderForCurrentSession(preparedSession);
-    } catch (error) {
-      console.error("[In-Browser Dictation] Start failed.", error);
-      await recorder.close();
-
-      if (isMicrophonePermissionError(error)) {
-        await requestMicrophonePermission();
-        return;
-      }
-
-      await failSession(error.code || "DICTATION_START_FAILED", error.message);
-    }
+    return sessions.markTargetReady(prepareResponse.target ?? null);
   }
 
   /**
@@ -147,7 +121,7 @@ export function createRecordingFlow({
 
     try {
       await showMicrophoneAccessGrantedState(content, session);
-      await startRecorderForCurrentSession(session);
+      await startRecordingForSession(session);
       return { ok: true };
     } catch (error) {
       await recorder.close();
@@ -159,7 +133,7 @@ export function createRecordingFlow({
   /**
    * Starts the offscreen recorder and shows the recording overlay.
    */
-  async function startRecorderForCurrentSession(session) {
+  async function startRecordingForSession(session) {
     const recordingResponse = await recorder.start(session.id, {
       tabId: session.tabId
     });
@@ -169,5 +143,38 @@ export function createRecordingFlow({
 
     const recordingSession = sessions.markRecording(recordingResponse.recording ?? null);
     await showRecordingState(content, recordingSession);
+  }
+
+  /**
+   * Stops the offscreen recorder and returns the serialized audio payload.
+   */
+  async function stopRecordingForSession(session) {
+    const recordingResponse = await recorder.stop(session.id);
+    if (!recordingResponse?.ok) {
+      throw toError(recordingResponse?.error, "Audio recording could not stop.");
+    }
+
+    return recordingResponse.audio ?? null;
+  }
+
+  /**
+   * Cleans up the offscreen recorder document when a lifecycle phase ends.
+   */
+  async function closeRecorder() {
+    await recorder.close();
+  }
+
+  /**
+   * Handles recorder startup failures that need recording-specific recovery.
+   */
+  async function handleStartFailure(error) {
+    await closeRecorder();
+
+    if (!isMicrophonePermissionError(error)) {
+      return false;
+    }
+
+    await requestMicrophonePermission();
+    return true;
   }
 }

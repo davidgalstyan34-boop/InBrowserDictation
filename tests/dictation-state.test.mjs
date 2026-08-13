@@ -59,4 +59,15 @@ describe("dictation state transitions", () => {
 
     assert.equal(status, DictationStatus.RECORDING);
   });
+
+  it("rejects invalid transitions", () => {
+    assert.throws(
+      () => transitionStatus(DictationStatus.IDLE, DictationEvent.STOP_REQUESTED),
+      {
+        code: "INVALID_SESSION_TRANSITION",
+        status: DictationStatus.IDLE,
+        event: DictationEvent.STOP_REQUESTED
+      }
+    );
+  });
 });

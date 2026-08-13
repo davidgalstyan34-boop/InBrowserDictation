@@ -29,13 +29,6 @@ export function createSpeechToTextClient({
   async function transcribe({ audio, signal = null } = {}) {
     const settings = await loadSpeechToTextSettings(storageArea);
 
-    if (settings.sttProvider !== "deepgram") {
-      throw createSpeechToTextError(
-        "STT_PROVIDER_UNSUPPORTED",
-        "Choose a supported speech-to-text provider in extension options."
-      );
-    }
-
     try {
       const audioBlob = audioPayloadToBlob(audio);
 

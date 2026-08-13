@@ -38,13 +38,6 @@ export function createTextImprovementClient({
       };
     }
 
-    if (settings.llmProvider !== "gemini") {
-      throw createTextImprovementError(
-        "LLM_PROVIDER_UNSUPPORTED",
-        "Choose a supported text-improvement provider in extension options."
-      );
-    }
-
     try {
       return {
         ...await improveTextWithGemini({

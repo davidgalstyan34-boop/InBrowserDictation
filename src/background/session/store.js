@@ -1,4 +1,8 @@
-import { DictationEvent, DictationStatus, transitionStatus } from "../../shared/dictation-state.js";
+import {
+  DictationEvent,
+  DictationStatus,
+  transitionStatus
+} from "../../shared/dictation-state.js";
 import {
   createIdleSession,
   createInsertionResult,
@@ -51,9 +55,10 @@ export function createSessionStore() {
    * passed to the service worker and should not outlive the page context.
    */
   function markTargetReady(target) {
+    const status = nextStatus(DictationEvent.TARGET_READY);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.TARGET_READY),
+      status,
       target
     };
     return session;
@@ -63,9 +68,10 @@ export function createSessionStore() {
    * Pauses startup until a visible extension page obtains microphone access.
    */
   function markMicrophonePermissionNeeded() {
+    const status = nextStatus(DictationEvent.MICROPHONE_PERMISSION_REQUIRED);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.MICROPHONE_PERMISSION_REQUIRED)
+      status
     };
     return session;
   }
@@ -74,9 +80,10 @@ export function createSessionStore() {
    * Stores start metadata returned by the offscreen recorder.
    */
   function markRecording(recording) {
+    const status = nextStatus(DictationEvent.RECORDING_STARTED);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.RECORDING_STARTED),
+      status,
       recording
     };
     return session;
@@ -86,9 +93,10 @@ export function createSessionStore() {
    * Moves the session into STOPPING while the recorder finalizes chunks.
    */
   function markStopping() {
+    const status = nextStatus(DictationEvent.STOP_REQUESTED);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.STOP_REQUESTED)
+      status
     };
     return session;
   }
@@ -100,9 +108,10 @@ export function createSessionStore() {
    * snapshots expose only audio metadata.
    */
   function markTranscribing(audio) {
+    const status = nextStatus(DictationEvent.STOPPED);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.STOPPED),
+      status,
       audio
     };
     return session;
@@ -112,9 +121,10 @@ export function createSessionStore() {
    * Stores the transcript privately and advances into text improvement.
    */
   function markTranscriptReady(transcription, completedAt = Date.now()) {
+    const status = nextStatus(DictationEvent.TRANSCRIPT_READY);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.TRANSCRIPT_READY),
+      status,
       transcription,
       completedAt
     };
@@ -125,9 +135,10 @@ export function createSessionStore() {
    * Stores improved text privately and advances into insertion.
    */
   function markImprovedTextReady(improvement, completedAt = Date.now()) {
+    const status = nextStatus(DictationEvent.IMPROVED_TEXT_READY);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.IMPROVED_TEXT_READY),
+      status,
       improvement,
       outputText: createOutputText({
         text: improvement?.text,
@@ -145,10 +156,11 @@ export function createSessionStore() {
    * Advances insertion with the raw transcript when LLM improvement fails.
    */
   function markRawTranscriptFallback(error, completedAt = Date.now()) {
+    const status = nextStatus(DictationEvent.IMPROVEMENT_FAILED_WITH_FALLBACK);
     const transcript = session.transcription?.transcript ?? "";
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.IMPROVEMENT_FAILED_WITH_FALLBACK),
+      status,
       outputText: createOutputText({
         text: transcript,
         source: "raw-transcript",
@@ -168,9 +180,10 @@ export function createSessionStore() {
    * Stores insertion metadata after content-side target insertion or fallback.
    */
   function markInsertionDone(insertion, completedAt = Date.now()) {
+    const status = nextStatus(DictationEvent.INSERTION_DONE);
     session = {
       ...session,
-      status: transitionStatus(session.status, DictationEvent.INSERTION_DONE),
+      status,
       insertion: createInsertionResult(insertion),
       completedAt
     };
@@ -190,9 +203,14 @@ export function createSessionStore() {
    * Records a normalized user-facing failure on the active session.
    */
   function fail(error) {
+    if (isTerminalStatus(session.status)) {
+      return session;
+    }
+
+    const status = nextStatus(DictationEvent.FAILED);
     session = {
       ...session,
-      status: DictationStatus.ERROR,
+      status,
       error
     };
     return session;
@@ -205,4 +223,12 @@ export function createSessionStore() {
     session = createIdleSession();
     return session;
   }
+
+  function nextStatus(event) {
+    return transitionStatus(session.status, event);
+  }
+}
+
+function isTerminalStatus(status) {
+  return status === DictationStatus.SUCCESS || status === DictationStatus.ERROR;
 }
