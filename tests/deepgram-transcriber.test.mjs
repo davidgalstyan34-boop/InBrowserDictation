@@ -19,6 +19,15 @@ describe("deepgram transcriber", () => {
     assert.equal(await blob.text(), "hello");
   });
 
+  it("decodes recorder data URLs with MIME parameters", async () => {
+    const blob = audioPayloadToBlob({
+      dataUrl: "data:audio/webm;codecs=opus;base64,aGVsbG8="
+    });
+
+    assert.equal(blob.type, "audio/webm;codecs=opus");
+    assert.equal(await blob.text(), "hello");
+  });
+
   it("posts audio to Deepgram and parses transcript metadata", async () => {
     let request = null;
     const fetchApi = async (url, options) => {

@@ -18,8 +18,15 @@ export function audioPayloadToBlob(audio) {
 }
 
 function parseDataUrl(dataUrl) {
-  const match = /^data:([^;,]*)(;base64)?,(.*)$/is.exec(dataUrl);
-  if (!match) {
+  if (!dataUrl.toLowerCase().startsWith("data:")) {
+    throw createSpeechToTextError(
+      "STT_AUDIO_INVALID",
+      "Recorded audio could not be decoded for transcription."
+    );
+  }
+
+  const commaIndex = dataUrl.indexOf(",");
+  if (commaIndex < 0) {
     throw createSpeechToTextError(
       "STT_AUDIO_INVALID",
       "Recorded audio could not be decoded for transcription."
@@ -27,8 +34,14 @@ function parseDataUrl(dataUrl) {
   }
 
   try {
-    const [, mimeType, base64Marker, encodedData] = match;
-    const binary = base64Marker
+    const metadata = dataUrl.slice("data:".length, commaIndex);
+    const encodedData = dataUrl.slice(commaIndex + 1);
+    const metadataParts = metadata.split(";").filter(Boolean);
+    const isBase64 = metadataParts.some((part) => part.toLowerCase() === "base64");
+    const mimeType = metadataParts
+      .filter((part) => part.toLowerCase() !== "base64")
+      .join(";");
+    const binary = isBase64
       ? decodeBase64(encodedData)
       : decodeURIComponent(encodedData);
     const bytes = new Uint8Array(binary.length);

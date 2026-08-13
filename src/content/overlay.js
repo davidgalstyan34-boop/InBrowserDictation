@@ -1,5 +1,9 @@
 let overlayHost = null;
 let overlayElements = null;
+let autoDismissTimer = null;
+
+const SUCCESS_AUTO_DISMISS_MS = 3500;
+const ERROR_AUTO_DISMISS_MS = 8000;
 
 /**
  * Creates or updates the in-page dictation status overlay.
@@ -7,11 +11,17 @@ let overlayElements = null;
  * The overlay is deliberately tiny and page-independent because it appears on
  * arbitrary websites whose CSS should not affect extension feedback.
  */
-export function renderDictationOverlay({ title, detail, tone = "default" }) {
+export function renderDictationOverlay({ title, detail, tone = "default", status = null }) {
+  clearAutoDismissTimer();
   mountOverlay();
   overlayElements.title.textContent = title || "Dictation";
   overlayElements.detail.textContent = detail || "";
   overlayElements.panel.dataset.tone = tone;
+
+  const autoDismissDelay = getAutoDismissDelay({ status, tone });
+  if (autoDismissDelay) {
+    autoDismissTimer = setTimeout(removeOverlay, autoDismissDelay);
+  }
 }
 
 /**
@@ -112,4 +122,36 @@ function mountOverlay() {
   };
 
   document.documentElement.append(overlayHost);
+}
+
+/**
+ * Terminal feedback should be visible briefly, then get out of the page's way.
+ * Errors stay up longer because they often contain the next corrective action.
+ */
+function getAutoDismissDelay({ status, tone }) {
+  if (status === "SUCCESS" || tone === "success") {
+    return SUCCESS_AUTO_DISMISS_MS;
+  }
+
+  if (status === "ERROR" || tone === "error") {
+    return ERROR_AUTO_DISMISS_MS;
+  }
+
+  return null;
+}
+
+function clearAutoDismissTimer() {
+  if (!autoDismissTimer) {
+    return;
+  }
+
+  clearTimeout(autoDismissTimer);
+  autoDismissTimer = null;
+}
+
+function removeOverlay() {
+  clearAutoDismissTimer();
+  overlayHost?.remove();
+  overlayHost = null;
+  overlayElements = null;
 }
