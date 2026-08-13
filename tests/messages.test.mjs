@@ -30,10 +30,12 @@ describe("message contracts", () => {
     const state = createEnvelope(MessageType.OFFSCREEN_GET_RECORDING_STATE, {}, "session-2");
     const start = createEnvelope(MessageType.OFFSCREEN_START_RECORDING, {}, "session-2");
     const stop = createEnvelope(MessageType.OFFSCREEN_STOP_RECORDING, {}, "session-2");
+    const dismiss = createEnvelope(MessageType.CONTENT_DISMISS_OVERLAY, {}, "session-2");
 
     assert.equal(parseMessageEnvelope(permission).type, MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT);
     assert.equal(parseMessageEnvelope(state).type, MessageType.OFFSCREEN_GET_RECORDING_STATE);
     assert.equal(parseMessageEnvelope(start).type, MessageType.OFFSCREEN_START_RECORDING);
     assert.equal(parseMessageEnvelope(stop).type, MessageType.OFFSCREEN_STOP_RECORDING);
+    assert.equal(parseMessageEnvelope(dismiss).type, MessageType.CONTENT_DISMISS_OVERLAY);
   });
 });

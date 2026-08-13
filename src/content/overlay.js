@@ -4,6 +4,7 @@ let autoDismissTimer = null;
 
 const SUCCESS_AUTO_DISMISS_MS = 3500;
 const ERROR_AUTO_DISMISS_MS = 8000;
+const OVERLAY_HOST_ID = "in-browser-dictation-overlay";
 
 /**
  * Creates or updates the in-page dictation status overlay.
@@ -25,15 +26,25 @@ export function renderDictationOverlay({ title, detail, tone = "default", status
 }
 
 /**
+ * Removes the overlay immediately when the background starts a replacement
+ * terminal session or explicitly clears page feedback.
+ */
+export function dismissDictationOverlay() {
+  removeOverlay();
+}
+
+/**
  * Mounts the Shadow DOM overlay once and caches handles for later updates.
  */
 function mountOverlay() {
+  removeDuplicateOverlayHosts();
+
   if (overlayElements && document.documentElement.contains(overlayHost)) {
     return;
   }
 
   overlayHost = document.createElement("div");
-  overlayHost.id = "in-browser-dictation-overlay";
+  overlayHost.id = OVERLAY_HOST_ID;
   overlayHost.style.position = "fixed";
   overlayHost.style.inset = "16px 16px auto auto";
   overlayHost.style.zIndex = "2147483647";
@@ -154,4 +165,12 @@ function removeOverlay() {
   overlayHost?.remove();
   overlayHost = null;
   overlayElements = null;
+}
+
+function removeDuplicateOverlayHosts() {
+  for (const host of document.querySelectorAll(`#${OVERLAY_HOST_ID}`)) {
+    if (host !== overlayHost) {
+      host.remove();
+    }
+  }
 }

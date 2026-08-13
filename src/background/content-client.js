@@ -14,6 +14,8 @@ export function createContentClient({ chromeApi }) {
   return {
     getActiveTab,
     prepareDictation,
+    dismissOverlay,
+    safeDismissOverlay,
     showState,
     safeShowState
   };
@@ -46,6 +48,32 @@ export function createContentClient({ chromeApi }) {
       state,
       sessionId
     ));
+  }
+
+  /**
+   * Asks the content script to remove any visible overlay for this session.
+   */
+  async function dismissOverlay(tabId, sessionId) {
+    return await sendTabMessageWithContentScript(tabId, createEnvelope(
+      MessageType.CONTENT_DISMISS_OVERLAY,
+      {},
+      sessionId
+    ));
+  }
+
+  /**
+   * Removes overlay feedback when possible, swallowing stale-tab errors.
+   */
+  async function safeDismissOverlay(tabId, sessionId) {
+    if (!tabId) {
+      return null;
+    }
+
+    try {
+      return await dismissOverlay(tabId, sessionId);
+    } catch {
+      return null;
+    }
   }
 
   /**

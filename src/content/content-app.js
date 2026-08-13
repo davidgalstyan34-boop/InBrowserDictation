@@ -1,5 +1,5 @@
 import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
-import { renderDictationOverlay } from "./overlay.js";
+import { dismissDictationOverlay, renderDictationOverlay } from "./overlay.js";
 import { captureActiveTarget, describeCapturedTarget, summarizeCapturedTarget } from "./target-capture.js";
 
 // Content-side session state keeps live DOM references out of the service
@@ -10,7 +10,8 @@ let activeSession = null;
 const messageHandlers = Object.freeze({
   [MessageType.CONTENT_SHOW_STATE]: renderStateMessage,
   [MessageType.CONTENT_PREPARE_DICTATION]: prepareDictation,
-  [MessageType.CONTENT_CANCEL_DICTATION]: cancelDictation
+  [MessageType.CONTENT_CANCEL_DICTATION]: cancelDictation,
+  [MessageType.CONTENT_DISMISS_OVERLAY]: dismissOverlay
 });
 
 /**
@@ -72,6 +73,18 @@ function cancelDictation({ message, sendResponse }) {
       detail: message.payload.detail || "Dictation stopped",
       tone: "muted"
     });
+  });
+
+  sendResponse({ ok: true });
+}
+
+/**
+ * Removes page feedback for a completed or failed session.
+ */
+function dismissOverlay({ message, sendResponse }) {
+  runWithCurrentSession(message.sessionId, () => {
+    activeSession = null;
+    dismissDictationOverlay();
   });
 
   sendResponse({ ok: true });

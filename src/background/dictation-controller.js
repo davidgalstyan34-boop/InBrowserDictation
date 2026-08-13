@@ -91,8 +91,8 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     const toggleActionsByStatus = {
       [DictationStatus.IDLE]: () => startDictationSession({ tab }),
       [DictationStatus.RECORDING]: stopDictationSession,
-      [DictationStatus.SUCCESS]: sessions.reset,
-      [DictationStatus.ERROR]: sessions.reset
+      [DictationStatus.SUCCESS]: () => replaceTerminalSession({ tab }),
+      [DictationStatus.ERROR]: () => replaceTerminalSession({ tab })
     };
 
     const action = toggleActionsByStatus[session.status] ?? reportBusySession;
@@ -252,6 +252,19 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       title: "Busy",
       detail: "Dictation is already working"
     });
+  }
+
+  /**
+   * Starts a fresh session from a terminal state in one shortcut press.
+   *
+   * The old overlay is dismissed before reset so terminal feedback from a
+   * previous tab cannot linger while the new tab shows startup feedback.
+   */
+  async function replaceTerminalSession({ tab } = {}) {
+    const previousSession = sessions.get();
+    await content.safeDismissOverlay(previousSession.tabId, previousSession.id);
+    sessions.reset();
+    await startDictationSession({ tab });
   }
 
   /**
