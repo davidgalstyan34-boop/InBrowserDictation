@@ -11,6 +11,7 @@ export const MessageType = Object.freeze({
   CONTENT_PREPARE_DICTATION: "content.prepareDictation",
   CONTENT_CANCEL_DICTATION: "content.cancelDictation",
   CONTENT_DISMISS_OVERLAY: "content.dismissOverlay",
+  CONTENT_INSERT_TEXT: "content.insertText",
   CONTENT_SHOW_STATE: "content.showState",
   RUNTIME_GET_STATE: "runtime.getState",
   RUNTIME_MICROPHONE_PERMISSION_RESULT: "runtime.microphonePermissionResult",

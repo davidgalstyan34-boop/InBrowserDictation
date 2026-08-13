@@ -22,6 +22,7 @@ export function createSessionStore() {
     markTranscriptReady,
     markImprovedTextReady,
     markRawTranscriptFallback,
+    markInsertionDone,
     recoverRecording,
     fail,
     reset,
@@ -136,7 +137,7 @@ export function createSessionStore() {
   }
 
   /**
-   * Stores improved text privately and completes the Phase 4 slice.
+   * Stores improved text privately and advances into Phase 5 insertion.
    *
    * Public snapshots expose only length/source metadata so transcript and
    * improved text do not leak to passive UI polling.
@@ -159,7 +160,7 @@ export function createSessionStore() {
   }
 
   /**
-   * Completes Phase 4 with the raw transcript when LLM improvement fails.
+   * Advances Phase 5 with the raw transcript when LLM improvement fails.
    */
   function markRawTranscriptFallback(error, completedAt = Date.now()) {
     const transcript = session.transcription?.transcript ?? "";
@@ -177,6 +178,19 @@ export function createSessionStore() {
         code: error?.code ?? "LLM_FAILED",
         message: error?.message ?? "Text improvement failed. The raw transcript is still available."
       }
+    };
+    return session;
+  }
+
+  /**
+   * Stores insertion metadata after content-side target insertion or fallback.
+   */
+  function markInsertionDone(insertion, completedAt = Date.now()) {
+    session = {
+      ...session,
+      status: transitionStatus(session.status, DictationEvent.INSERTION_DONE),
+      insertion: createInsertionResult(insertion),
+      completedAt
     };
     return session;
   }
@@ -233,6 +247,7 @@ export function createIdleSession() {
     transcription: null,
     improvement: null,
     outputText: null,
+    insertion: null,
     completedAt: null,
     warning: null,
     error: null
@@ -257,6 +272,7 @@ export function toPublicSession(session) {
     transcription: toPublicTranscription(session.transcription),
     improvement: toPublicImprovement(session.improvement),
     outputText: toPublicOutputText(session.outputText),
+    insertion: toPublicInsertion(session.insertion),
     completedAt: session.completedAt,
     warning: session.warning,
     error: session.error
@@ -319,5 +335,29 @@ function toPublicOutputText(outputText) {
     source: outputText.source,
     styleId: outputText.styleId,
     providerMeta: outputText.providerMeta ?? null
+  };
+}
+
+function createInsertionResult(insertion) {
+  return {
+    method: insertion?.method ?? "unknown",
+    strategy: insertion?.strategy ?? null,
+    targetKind: insertion?.targetKind ?? null,
+    textLength: Number.isInteger(insertion?.textLength) ? insertion.textLength : 0,
+    fallbackReason: insertion?.fallbackReason ?? null
+  };
+}
+
+function toPublicInsertion(insertion) {
+  if (!insertion) {
+    return null;
+  }
+
+  return {
+    method: insertion.method,
+    strategy: insertion.strategy,
+    targetKind: insertion.targetKind,
+    textLength: insertion.textLength,
+    fallbackReason: insertion.fallbackReason
   };
 }

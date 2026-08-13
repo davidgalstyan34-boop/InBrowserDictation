@@ -16,12 +16,14 @@ This keeps the first implementation window focused on browser behavior instead o
 - `content_scripts`: loaded on normal pages to capture targets and show overlay feedback.
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
-- Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`.
+- Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`, `clipboardWrite`.
 - Current host permissions: `https://api.deepgram.com/*`, `https://generativelanguage.googleapis.com/*`.
 
-`activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need. The likely next addition is `clipboardWrite` only when clipboard fallback is implemented.
+`activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need.
 
 The Deepgram host permission is required for Phase 3 because the service worker posts the captured audio blob to the configured STT provider. The Google Generative Language host permission is required for Phase 4 because the service worker posts transcript text to the configured Gemini provider.
+
+`clipboardWrite` is required for Phase 5 because the content script attempts to copy final text when the originally captured DOM target is detached, stale, unsupported, or unavailable.
 
 ## 3. Execution Contexts
 
@@ -98,12 +100,12 @@ Important message families:
 - `content.cancelDictation`: clear placeholder/session UI.
 - `content.dismissOverlay`: remove terminal overlay feedback before a replacement session starts.
 - `content.showState`: update overlay.
+- `content.insertText`: insert final text into the captured target or copy it to the clipboard.
 - `runtime.getState`: options/popup can inspect current service-worker state.
 - `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result.
 - `offscreen.getRecordingState`: recover an active recorder after service-worker suspension.
 - `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
 - `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
-- Future: `content.insertText`.
 
 Every session-bound message carries `sessionId`. Receivers ignore stale session IDs.
 
@@ -141,11 +143,11 @@ IMPROVING -> INSERTING(raw transcript) -> SUCCESS -> IDLE
 Repeated commands:
 
 - `IDLE`: start a new session.
-- `STARTING`, `STOPPING`, provider states: ignore or show busy feedback.
+- `STARTING`, `STOPPING`, provider and insertion states: ignore or show busy feedback.
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-The Phase 4 implementation replaces the Phase 3 terminal transcript step with `TRANSCRIBING -> IMPROVING`, then completes at `IMPROVING -> SUCCESS` once improved text is ready. Phase 5 should replace that terminal improved-text step with `IMPROVING -> INSERTING`.
+The Phase 5 implementation routes `IMPROVING -> INSERTING`, then completes after target insertion or clipboard fallback succeeds.
 
 First-run microphone flow:
 
@@ -172,12 +174,21 @@ For `contenteditable`:
 - clone the current DOM `Range` when it belongs to the editable root;
 - insert text through range operations;
 - dispatch `beforeinput`/`input` where practical.
+- Phase 5 currently inserts a text node at the captured range; richer editor adapters are P1.
 
 Changed focus:
 
 - do not insert into the newly focused element.
 - use the captured target if still valid.
 - fallback to clipboard if target is detached, invalid, or insertion fails.
+
+Phase 5 insertion response:
+
+```js
+insertText({ text }) -> { method, targetKind, textLength, fallbackReason }
+```
+
+The response never includes inserted text.
 
 ## 8. STT Provider Abstraction
 
@@ -225,7 +236,7 @@ Prompt rules:
 
 If LLM fails after STT succeeds, insert or copy the raw transcript and show a non-destructive warning.
 
-Phase 4 preserves that fallback as private session output with a warning overlay. Phase 5 will insert or copy that output.
+Phase 5 preserves the fallback as private session output, then inserts or copies that output.
 
 ## 10. Storage Model
 

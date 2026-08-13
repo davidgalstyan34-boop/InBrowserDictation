@@ -1,17 +1,19 @@
 import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
 import { dismissDictationOverlay, renderDictationOverlay } from "./overlay.js";
 import { captureActiveTarget, describeCapturedTarget, summarizeCapturedTarget } from "./target-capture.js";
+import { insertTextIntoCapturedTarget } from "./text-insertion.js";
 
 // Content-side session state keeps live DOM references out of the service
-// worker. Later insertion code will use this target to avoid writing into a
-// random field if focus changes while providers are processing.
+// worker. Insertion uses this captured target to avoid writing into a random
+// field if focus changes while providers are processing.
 let activeSession = null;
 
 const messageHandlers = Object.freeze({
   [MessageType.CONTENT_SHOW_STATE]: renderStateMessage,
   [MessageType.CONTENT_PREPARE_DICTATION]: prepareDictation,
   [MessageType.CONTENT_CANCEL_DICTATION]: cancelDictation,
-  [MessageType.CONTENT_DISMISS_OVERLAY]: dismissOverlay
+  [MessageType.CONTENT_DISMISS_OVERLAY]: dismissOverlay,
+  [MessageType.CONTENT_INSERT_TEXT]: insertText
 });
 
 /**
@@ -79,6 +81,52 @@ function cancelDictation({ message, sendResponse }) {
 }
 
 /**
+ * Inserts the final private output text into the captured target.
+ *
+ * The service worker sends text only at the insertion boundary. The response
+ * carries metadata only so background state and overlays never echo the text.
+ */
+function insertText({ message, sendResponse }) {
+  const session = activeSession;
+  if (session?.id && session.id !== message.sessionId) {
+    sendResponse({
+      ok: false,
+      error: {
+        code: "INSERTION_SESSION_STALE",
+        message: "A newer dictation session is active on this page."
+      }
+    });
+    return;
+  }
+
+  insertTextIntoCapturedTarget(session?.target ?? { kind: "none" }, message.payload.text)
+    .then((insertion) => {
+      activeSession = {
+        id: message.sessionId,
+        target: null,
+        completedAt: Date.now()
+      };
+
+      sendResponse({
+        ok: true,
+        insertion
+      });
+    })
+    .catch((error) => {
+      activeSession = {
+        id: message.sessionId,
+        target: null,
+        failedAt: Date.now()
+      };
+
+      sendResponse({
+        ok: false,
+        error: toMessageError(error, "Text could not be inserted.")
+      });
+    });
+}
+
+/**
  * Removes page feedback for a completed or failed session.
  */
 function dismissOverlay({ message, sendResponse }) {
@@ -99,4 +147,11 @@ function runWithCurrentSession(sessionId, action) {
   if (!sessionId || activeSession?.id === sessionId) {
     action();
   }
+}
+
+function toMessageError(error, fallbackMessage) {
+  return {
+    code: error?.code || "CONTENT_INSERTION_FAILED",
+    message: error?.message || fallbackMessage
+  };
 }

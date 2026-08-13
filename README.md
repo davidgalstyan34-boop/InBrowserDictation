@@ -1,16 +1,16 @@
 # In-Browser Dictation
 
-Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, Deepgram speech-to-text, and Gemini text improvement.
+Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, Deepgram speech-to-text, Gemini text improvement, target insertion, and clipboard fallback.
 
 ## Current Capability
 
 Current goal:
 
 ```text
-Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> text ready.
+Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> insert into the captured target or copy to clipboard.
 ```
 
-Insertion and clipboard fallback are upcoming milestones. See [docs/architecture.md](docs/architecture.md).
+Product feedback polish is the next milestone. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -52,9 +52,9 @@ Keys are stored with `chrome.storage.sync` for this take-home implementation. A 
 
 The default command is `Ctrl+Shift+Space` on Windows/Linux and `Command+Shift+Space` on macOS. Chrome may require you to confirm or change this shortcut at `chrome://extensions/shortcuts`.
 
-Pressing the shortcut on a normal webpage displays a small overlay, captures a summary of the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, sends the transcript to Gemini for the selected rewrite style, and reports that text is ready. Chrome prompts for microphone permission the first time recording starts.
+Pressing the shortcut on a normal webpage displays a small overlay, captures the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, sends the transcript to Gemini for the selected rewrite style, and inserts the final text into the originally captured target. Chrome prompts for microphone permission the first time recording starts.
 
-If the selected style is Raw, the extension skips the Gemini call and keeps the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session completes with the raw transcript and shows a warning instead of failing the dictation.
+If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
@@ -69,6 +69,7 @@ Permissions used today:
 - `storage`: saves provider keys and the default style in extension storage.
 - `offscreen`: records microphone audio from an offscreen document because the service worker cannot own media APIs.
 - `activeTab` and `scripting`: inject the content script into the active tab after an unpacked extension reload when the static listener is missing.
+- `clipboardWrite`: copies final text when the captured DOM target cannot be safely written.
 - `https://api.deepgram.com/*`: sends recorded audio to Deepgram for speech-to-text.
 - `https://generativelanguage.googleapis.com/*`: sends transcript text to Gemini for text improvement.
 
@@ -76,7 +77,7 @@ Permissions used today:
 
 - Requires a saved Deepgram API key before transcription can complete.
 - Requires a saved Gemini API key for non-Raw text improvement styles.
-- No text insertion yet.
+- Rich editor support is basic; complex editors may fall back to clipboard.
 - Content scripts cannot run on restricted Chrome pages such as `chrome://extensions`.
 
 ## Troubleshooting

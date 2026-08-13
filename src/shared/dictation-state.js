@@ -64,10 +64,8 @@ const transitionTable = Object.freeze({
     [DictationEvent.FAILED]: DictationStatus.ERROR
   },
   [DictationStatus.IMPROVING]: {
-    // Phase 4 completes once improved text is ready. Phase 5 should route this
-    // event into INSERTING when DOM insertion/clipboard fallback is implemented.
-    [DictationEvent.IMPROVED_TEXT_READY]: DictationStatus.SUCCESS,
-    [DictationEvent.FAILED]: DictationStatus.SUCCESS
+    [DictationEvent.IMPROVED_TEXT_READY]: DictationStatus.INSERTING,
+    [DictationEvent.FAILED]: DictationStatus.INSERTING
   },
   [DictationStatus.INSERTING]: {
     [DictationEvent.INSERTION_DONE]: DictationStatus.SUCCESS,

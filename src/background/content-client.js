@@ -15,6 +15,7 @@ export function createContentClient({ chromeApi }) {
     getActiveTab,
     prepareDictation,
     dismissOverlay,
+    insertText,
     safeDismissOverlay,
     showState,
     safeShowState
@@ -57,6 +58,17 @@ export function createContentClient({ chromeApi }) {
     return await sendTabMessageWithContentScript(tabId, createEnvelope(
       MessageType.CONTENT_DISMISS_OVERLAY,
       {},
+      sessionId
+    ));
+  }
+
+  /**
+   * Sends private output text to the content script for target insertion.
+   */
+  async function insertText(tabId, sessionId, text) {
+    return await sendTabMessageWithContentScript(tabId, createEnvelope(
+      MessageType.CONTENT_INSERT_TEXT,
+      { text },
       sessionId
     ));
   }

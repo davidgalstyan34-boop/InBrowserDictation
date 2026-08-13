@@ -6,6 +6,7 @@ import { toError } from "./errors.js";
 import { createMicrophonePermissionClient } from "./microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "./offscreen-recorder-client.js";
 import {
+  describeInsertionState,
   describeOutputTextState,
   describeRecordingState,
   describeTranscriptionState
@@ -109,7 +110,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Starts a new Phase 4 session:
+   * Starts a new Phase 5 session:
    * 1. capture the active tab;
    * 2. show immediate shortcut feedback;
    * 3. ask the content script to remember the insertion target;
@@ -161,7 +162,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Stops the active recording, transcribes audio, and improves the transcript.
+   * Stops the active recording, transcribes audio, improves text, and inserts it.
    *
    * Recorder ownership ends as soon as audio is serialized. Provider details
    * stay in delegated clients so this method remains lifecycle orchestration.
@@ -265,21 +266,17 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
-   * Runs Phase 4 text improvement with a raw-transcript fallback.
+   * Runs text improvement, then inserts improved text or raw fallback text.
    */
   async function improveTextForCurrentSession(session) {
+    let insertingSession = null;
+
     try {
       const improvement = await textImprovement.improveText({
         text: session.transcription?.transcript ?? ""
       });
-      const completedSession = sessions.markImprovedTextReady(improvement);
+      insertingSession = sessions.markImprovedTextReady(improvement);
 
-      await content.safeShowState(completedSession.tabId, completedSession.id, {
-        status: completedSession.status,
-        title: "Text ready",
-        detail: describeOutputTextState(completedSession.outputText),
-        tone: "success"
-      });
     } catch (error) {
       console.warn("[In-Browser Dictation] Text improvement failed; using raw transcript.", {
         sessionId: session.id,
@@ -287,14 +284,42 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
         message: error.message
       });
 
-      const fallbackSession = sessions.markRawTranscriptFallback(error);
-      await content.safeShowState(fallbackSession.tabId, fallbackSession.id, {
-        status: fallbackSession.status,
-        title: "Raw transcript ready",
-        detail: describeOutputTextState(fallbackSession.outputText, fallbackSession.warning),
-        tone: "warning"
-      });
+      insertingSession = sessions.markRawTranscriptFallback(error);
     }
+
+    await content.safeShowState(insertingSession.tabId, insertingSession.id, {
+      status: insertingSession.status,
+      title: insertingSession.warning ? "Inserting raw transcript" : "Inserting",
+      detail: describeOutputTextState(insertingSession.outputText, insertingSession.warning),
+      tone: insertingSession.warning ? "warning" : "default"
+    });
+
+    await insertOutputTextForCurrentSession(insertingSession);
+  }
+
+  /**
+   * Sends private final text to the captured page target and completes Phase 5.
+   */
+  async function insertOutputTextForCurrentSession(session) {
+    const insertionResponse = await content.insertText(
+      session.tabId,
+      session.id,
+      session.outputText?.text ?? ""
+    );
+
+    if (!insertionResponse?.ok) {
+      throw toError(insertionResponse?.error, "Text could not be inserted.");
+    }
+
+    const completedSession = sessions.markInsertionDone(insertionResponse.insertion);
+    const usedClipboard = completedSession.insertion?.method === "clipboard";
+
+    await content.safeShowState(completedSession.tabId, completedSession.id, {
+      status: completedSession.status,
+      title: usedClipboard ? "Copied to clipboard" : "Inserted",
+      detail: describeInsertionState(completedSession.insertion, completedSession.warning),
+      tone: usedClipboard || completedSession.warning ? "warning" : "success"
+    });
   }
 
   /**

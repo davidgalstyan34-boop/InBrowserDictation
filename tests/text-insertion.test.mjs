@@ -1,0 +1,161 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { insertTextIntoCapturedTarget } from "../src/content/text-insertion.js";
+
+describe("content text insertion", () => {
+  it("inserts into the captured text-control selection and dispatches input events", async () => {
+    const events = [];
+    const element = createTextControl({
+      value: "hello world",
+      events
+    });
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "input",
+      element,
+      selectionStart: 6,
+      selectionEnd: 11,
+      valueLength: 11
+    }, "there", {
+      clipboard: null
+    });
+
+    assert.deepEqual(result, {
+      method: "target",
+      targetKind: "input",
+      textLength: 5
+    });
+    assert.equal(element.value, "hello there");
+    assert.deepEqual(element.selection, [11, 11]);
+    assert.deepEqual(events.map((event) => event.type), ["beforeinput", "input"]);
+    assert.equal(element.focused, true);
+  });
+
+  it("copies to clipboard when the captured text control changed before insertion", async () => {
+    let copiedText = "";
+    const element = createTextControl({
+      value: "changed"
+    });
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "textarea",
+      element,
+      selectionStart: 0,
+      selectionEnd: 3,
+      valueLength: 3
+    }, "final text", {
+      clipboard: {
+        writeText: async (text) => {
+          copiedText = text;
+        }
+      }
+    });
+
+    assert.equal(copiedText, "final text");
+    assert.deepEqual(result, {
+      method: "clipboard",
+      strategy: "async-clipboard",
+      targetKind: "textarea",
+      textLength: 10,
+      fallbackReason: "INSERTION_TARGET_STALE"
+    });
+    assert.equal(element.value, "changed");
+  });
+
+  it("inserts into a captured contenteditable range", async () => {
+    const commonAncestor = {};
+    const insertedNodes = [];
+    const selectedRanges = [];
+    const events = [];
+    const element = {
+      isConnected: true,
+      focused: false,
+      contains: (node) => node === commonAncestor,
+      dispatchEvent: (event) => {
+        events.push(event);
+        return true;
+      },
+      focus() {
+        this.focused = true;
+      }
+    };
+    const range = {
+      commonAncestorContainer: commonAncestor,
+      deleted: false,
+      movedAfter: null,
+      deleteContents() {
+        this.deleted = true;
+      },
+      insertNode(node) {
+        insertedNodes.push(node);
+      },
+      setStartAfter(node) {
+        this.movedAfter = node;
+      },
+      setEndAfter(node) {
+        this.movedAfter = node;
+      }
+    };
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "contenteditable",
+      element,
+      range
+    }, "edited text", {
+      clipboard: null,
+      documentRef: {
+        createTextNode: (text) => ({ textContent: text })
+      },
+      windowRef: {
+        getSelection: () => ({
+          removeAllRanges: () => selectedRanges.push(null),
+          addRange: (nextRange) => selectedRanges.push(nextRange)
+        })
+      }
+    });
+
+    assert.deepEqual(result, {
+      method: "target",
+      targetKind: "contenteditable",
+      textLength: 11
+    });
+    assert.equal(element.focused, true);
+    assert.equal(range.deleted, true);
+    assert.equal(insertedNodes[0].textContent, "edited text");
+    assert.equal(range.movedAfter, insertedNodes[0]);
+    assert.deepEqual(events.map((event) => event.type), ["beforeinput", "input"]);
+    assert.equal(selectedRanges.includes(range), true);
+  });
+
+  it("fails when neither target insertion nor clipboard fallback is available", async () => {
+    await assert.rejects(
+      insertTextIntoCapturedTarget({ kind: "none" }, "text", {
+        clipboard: null,
+        documentRef: null
+      }),
+      { code: "INSERTION_AND_CLIPBOARD_FAILED" }
+    );
+  });
+});
+
+function createTextControl({ value, events = [] }) {
+  return {
+    value,
+    events,
+    isConnected: true,
+    disabled: false,
+    readOnly: false,
+    focused: false,
+    selection: null,
+    focus() {
+      this.focused = true;
+    },
+    setSelectionRange(start, end) {
+      this.selection = [start, end];
+    },
+    dispatchEvent(event) {
+      events.push(event);
+      return true;
+    }
+  };
+}

@@ -36,7 +36,7 @@ describe("session store", () => {
     });
   });
 
-  it("tracks the Phase 4 transcription and improvement lifecycle without exposing text", () => {
+  it("tracks the Phase 5 transcription, improvement, and insertion lifecycle without exposing text", () => {
     const sessions = createSessionStore();
 
     sessions.start({ id: "session-4", tabId: 44, startedAt: 1000 });
@@ -74,7 +74,7 @@ describe("session store", () => {
     });
     assert.equal("transcript" in sessions.toPublicSession().transcription, false);
 
-    const completed = sessions.markImprovedTextReady({
+    const inserting = sessions.markImprovedTextReady({
       text: "Hello world.",
       source: "llm",
       styleId: "default",
@@ -84,8 +84,8 @@ describe("session store", () => {
       }
     }, 3300);
 
-    assert.equal(completed.status, DictationStatus.SUCCESS);
-    assert.equal(completed.outputText.text, "Hello world.");
+    assert.equal(inserting.status, DictationStatus.INSERTING);
+    assert.equal(inserting.outputText.text, "Hello world.");
     assert.deepEqual(sessions.toPublicSession().outputText, {
       textLength: 12,
       source: "llm",
@@ -96,6 +96,21 @@ describe("session store", () => {
       }
     });
     assert.equal("text" in sessions.toPublicSession().outputText, false);
+
+    const completed = sessions.markInsertionDone({
+      method: "target",
+      targetKind: "textarea",
+      textLength: 12
+    }, 3400);
+
+    assert.equal(completed.status, DictationStatus.SUCCESS);
+    assert.deepEqual(sessions.toPublicSession().insertion, {
+      method: "target",
+      strategy: null,
+      targetKind: "textarea",
+      textLength: 12,
+      fallbackReason: null
+    });
   });
 
   it("completes with raw transcript metadata when text improvement fails", () => {
@@ -119,13 +134,13 @@ describe("session store", () => {
       }
     });
 
-    const completed = sessions.markRawTranscriptFallback({
+    const inserting = sessions.markRawTranscriptFallback({
       code: "LLM_RATE_LIMITED",
       message: "Gemini rate limit reached."
     }, 3300);
 
-    assert.equal(completed.status, DictationStatus.SUCCESS);
-    assert.equal(completed.outputText.text, "raw transcript");
+    assert.equal(inserting.status, DictationStatus.INSERTING);
+    assert.equal(inserting.outputText.text, "raw transcript");
     assert.deepEqual(sessions.toPublicSession().outputText, {
       textLength: 14,
       source: "raw-transcript",
@@ -137,6 +152,23 @@ describe("session store", () => {
     assert.deepEqual(sessions.toPublicSession().warning, {
       code: "LLM_RATE_LIMITED",
       message: "Gemini rate limit reached."
+    });
+
+    const completed = sessions.markInsertionDone({
+      method: "clipboard",
+      strategy: "async-clipboard",
+      targetKind: "textarea",
+      textLength: 14,
+      fallbackReason: "INSERTION_TARGET_STALE"
+    }, 3400);
+
+    assert.equal(completed.status, DictationStatus.SUCCESS);
+    assert.deepEqual(sessions.toPublicSession().insertion, {
+      method: "clipboard",
+      strategy: "async-clipboard",
+      targetKind: "textarea",
+      textLength: 14,
+      fallbackReason: "INSERTION_TARGET_STALE"
     });
   });
 

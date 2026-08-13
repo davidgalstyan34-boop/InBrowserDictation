@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { DictationEvent, DictationStatus, transitionStatus } from "../src/shared/dictation-state.js";
 
 describe("dictation state transitions", () => {
-  it("walks the current Phase 4 pipeline", () => {
+  it("walks the current Phase 5 pipeline", () => {
     let status = DictationStatus.IDLE;
     status = transitionStatus(status, DictationEvent.START_REQUESTED);
     assert.equal(status, DictationStatus.STARTING);
@@ -16,18 +16,20 @@ describe("dictation state transitions", () => {
     status = transitionStatus(status, DictationEvent.TRANSCRIPT_READY);
     assert.equal(status, DictationStatus.IMPROVING);
     status = transitionStatus(status, DictationEvent.IMPROVED_TEXT_READY);
+    assert.equal(status, DictationStatus.INSERTING);
+    status = transitionStatus(status, DictationEvent.INSERTION_DONE);
     assert.equal(status, DictationStatus.SUCCESS);
   });
 
-  it("keeps later insertion states available for future phases", () => {
+  it("completes after insertion work finishes", () => {
     let status = DictationStatus.INSERTING;
     status = transitionStatus(status, DictationEvent.INSERTION_DONE);
     assert.equal(status, DictationStatus.SUCCESS);
   });
 
-  it("completes with raw transcript fallback when LLM improvement fails after STT", () => {
+  it("routes raw transcript fallback into insertion when LLM improvement fails after STT", () => {
     const status = transitionStatus(DictationStatus.IMPROVING, DictationEvent.FAILED);
-    assert.equal(status, DictationStatus.SUCCESS);
+    assert.equal(status, DictationStatus.INSERTING);
   });
 
   it("can finish Phase 2 after recording produces audio", () => {
