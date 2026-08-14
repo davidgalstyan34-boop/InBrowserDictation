@@ -1,14 +1,14 @@
-import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
-import { createContentClient } from "./content-client.js";
-import { createCommandFlow } from "./controller/command-flow.js";
-import { createProcessingFlow } from "./controller/processing-flow.js";
-import { createRecordingFlow } from "./controller/recording-flow.js";
-import { showFailureState } from "./controller/overlay-feedback.js";
-import { createMicrophonePermissionClient } from "./microphone-permission-client.js";
-import { createOffscreenRecorderClient } from "./offscreen-recorder-client.js";
-import { createSessionStore } from "./session/store.js";
-import { createSpeechToTextClient } from "./speech-to-text-client.js";
-import { createTextImprovementClient } from "./text-improvement-client.js";
+import { MessageType, parseMessageEnvelope } from "../../shared/messages.js";
+import { createContentClient } from "../clients/content-client.js";
+import { createMicrophonePermissionClient } from "../clients/microphone-permission-client.js";
+import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
+import { createSpeechToTextClient } from "../providers/speech-to-text-client.js";
+import { createTextImprovementClient } from "../providers/text-improvement-client.js";
+import { createSessionStore } from "../session/store.js";
+import { createCommandFlow } from "./command-flow.js";
+import { showFailureState } from "./overlay-feedback.js";
+import { createProcessingFlow } from "./processing-flow.js";
+import { createRecordingFlow } from "./recording-flow.js";
 
 /**
  * Composes the background side of one dictation session.

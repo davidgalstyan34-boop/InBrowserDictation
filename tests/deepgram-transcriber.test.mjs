@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { audioPayloadToBlob } from "../src/background/audio-payload.js";
+import { audioPayloadToBlob } from "../src/background/providers/audio-payload.js";
 import {
   extractDeepgramTranscript,
   transcribeWithDeepgram
-} from "../src/background/deepgram-transcriber.js";
+} from "../src/background/providers/deepgram-transcriber.js";
 
 const audio = Object.freeze({
   mimeType: "audio/webm",

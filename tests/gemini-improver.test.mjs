@@ -4,9 +4,9 @@ import {
   DEFAULT_GEMINI_MODEL,
   extractGeminiOutputText,
   improveTextWithGemini
-} from "../src/background/gemini-improver.js";
-import { buildTextImprovementPrompt } from "../src/background/text-improvement-prompts.js";
-import { createTextImprovementClient } from "../src/background/text-improvement-client.js";
+} from "../src/background/providers/gemini-improver.js";
+import { buildTextImprovementPrompt } from "../src/background/providers/text-improvement-prompts.js";
+import { createTextImprovementClient } from "../src/background/providers/text-improvement-client.js";
 import { DEFAULT_SETTINGS } from "../src/shared/settings.js";
 
 const style = Object.freeze({

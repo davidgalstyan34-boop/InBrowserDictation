@@ -1,5 +1,5 @@
-import { createDictationController } from "./dictation-controller.js";
-import { createCommandDiagnostics } from "./command-diagnostics.js";
+import { createDictationController } from "./controller/dictation-controller.js";
+import { createCommandDiagnostics } from "./diagnostics/command-diagnostics.js";
 
 // Manifest V3 service worker entrypoint.
 //

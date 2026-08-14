@@ -1,4 +1,4 @@
-import { loadSettings, resolveRewriteStyle } from "../shared/settings.js";
+import { loadSettings, resolveRewriteStyle } from "../../shared/settings.js";
 import { improveTextWithGemini } from "./gemini-improver.js";
 import {
   createTextImprovementError,

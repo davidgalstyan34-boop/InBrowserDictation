@@ -60,6 +60,16 @@ Popup:
 
 - P1 only. It should reflect state and expose convenience controls, not be required for normal usage.
 
+Background source layout:
+
+- `background/service-worker.js`: Chrome event entrypoint only.
+- `background/controller/`: session composition and lifecycle flows.
+- `background/clients/`: Chrome API adapters for tabs, content scripts, offscreen recording, and permission pages.
+- `background/providers/`: STT/LLM facades, provider implementations, provider errors, prompts, request signals, and audio payload conversion.
+- `background/session/`: authoritative session shape, store, and public snapshots.
+- `background/diagnostics/`: command/runtime diagnostics.
+- `background/utils/`: small background-only helpers.
+
 ## 4. Audio Design
 
 Manifest V3 service workers do not provide a stable DOM/media environment. Recording should use an offscreen document for microphone work.

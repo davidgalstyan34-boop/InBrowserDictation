@@ -1,4 +1,4 @@
-import { toError } from "../errors.js";
+import { toError } from "../utils/errors.js";
 import {
   showImprovingState,
   showInsertionCompleteState,

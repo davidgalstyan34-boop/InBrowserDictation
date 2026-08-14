@@ -1,5 +1,5 @@
-import { MessageType, createEnvelope } from "../shared/messages.js";
-import { toError } from "./errors.js";
+import { MessageType, createEnvelope } from "../../shared/messages.js";
+import { toError } from "../utils/errors.js";
 
 const DEFAULT_RECORDER_PATH = "offscreen/recorder.html";
 

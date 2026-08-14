@@ -1,4 +1,4 @@
-import { loadSettings } from "../shared/settings.js";
+import { loadSettings } from "../../shared/settings.js";
 import { audioPayloadToBlob } from "./audio-payload.js";
 import {
   createSpeechToTextError,

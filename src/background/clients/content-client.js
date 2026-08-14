@@ -1,4 +1,4 @@
-import { MessageType, createEnvelope } from "../shared/messages.js";
+import { MessageType, createEnvelope } from "../../shared/messages.js";
 
 const CONTENT_SCRIPT_FILE = "content/content-script.js";
 

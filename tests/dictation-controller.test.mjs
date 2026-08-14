@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createDictationController } from "../src/background/dictation-controller.js";
+import { createDictationController } from "../src/background/controller/dictation-controller.js";
 import { MessageType } from "../src/shared/messages.js";
 
 describe("dictation controller", () => {
