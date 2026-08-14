@@ -10,7 +10,7 @@ Current goal:
 Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> insert into the captured target or copy to clipboard.
 ```
 
-Product feedback polish is the next milestone. See [docs/architecture.md](docs/architecture.md).
+Phase 6 product feedback is now included: explicit overlay progress/error states, API key readiness, key visibility controls, and style-dependent Gemini requirements. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -45,6 +45,8 @@ Open the extension options page and save:
 - Deepgram API key for STT.
 - Gemini API key for LLM rewriting.
 - Default rewrite style.
+
+The Gemini key is optional when the selected style is Raw because that path skips text improvement.
 
 Keys are stored with `chrome.storage.sync` for this take-home implementation. A production version should protect provider credentials behind a backend or authenticated service.
 

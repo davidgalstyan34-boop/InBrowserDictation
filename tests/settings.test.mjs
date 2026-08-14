@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_SETTINGS,
+  getConfigurationRequirements,
   normalizeSettings,
   resolveRewriteStyle,
   validateSettings
@@ -100,5 +101,27 @@ describe("settings", () => {
     });
     assert.equal(custom.id, "engineering-slack");
     assert.equal(custom.instructions, "Write concise technical messages.");
+  });
+
+  it("reports credential requirements for LLM and raw processing paths", () => {
+    const defaultRequirements = getConfigurationRequirements({
+      ...DEFAULT_SETTINGS,
+      sttApiKey: "deepgram-key"
+    });
+
+    assert.equal(defaultRequirements.sttApiKey.required, true);
+    assert.equal(defaultRequirements.sttApiKey.configured, true);
+    assert.equal(defaultRequirements.llmApiKey.required, true);
+    assert.equal(defaultRequirements.llmApiKey.configured, false);
+    assert.equal(defaultRequirements.llmApiKey.bypassed, false);
+
+    const rawRequirements = getConfigurationRequirements({
+      ...DEFAULT_SETTINGS,
+      defaultStyleId: "raw"
+    });
+
+    assert.equal(rawRequirements.styleId, "raw");
+    assert.equal(rawRequirements.llmApiKey.required, false);
+    assert.equal(rawRequirements.llmApiKey.bypassed, true);
   });
 });

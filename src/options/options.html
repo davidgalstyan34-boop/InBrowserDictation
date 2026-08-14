@@ -13,39 +13,69 @@
         <p>Provider credentials and default rewrite style.</p>
       </header>
 
-      <form id="settings-form" class="settings-form">
+      <form id="settings-form" class="settings-form" novalidate>
         <section class="settings-section" aria-labelledby="stt-heading">
-          <h2 id="stt-heading">Speech To Text</h2>
+          <div class="section-heading">
+            <h2 id="stt-heading">Speech To Text</h2>
+            <p>Audio transcription provider.</p>
+          </div>
+
           <label for="stt-provider">Provider</label>
           <select id="stt-provider" name="sttProvider">
             <option value="deepgram">Deepgram</option>
           </select>
 
-          <label for="stt-api-key">API Key</label>
-          <input id="stt-api-key" name="sttApiKey" type="password" autocomplete="off">
+          <div class="field-header">
+            <label for="stt-api-key">API Key</label>
+            <span id="stt-key-state" class="field-state" data-state="missing">Missing</span>
+          </div>
+          <div class="secret-field">
+            <input id="stt-api-key" name="sttApiKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="stt-api-key-help stt-api-key-error">
+            <button type="button" class="visibility-toggle" data-toggle-secret="stt-api-key" aria-controls="stt-api-key" aria-pressed="false">Show</button>
+          </div>
+          <p id="stt-api-key-help" class="field-note">Required before dictation can transcribe audio.</p>
+          <p id="stt-api-key-error" class="field-error" role="alert"></p>
         </section>
 
         <section class="settings-section" aria-labelledby="llm-heading">
-          <h2 id="llm-heading">Text Improvement</h2>
+          <div class="section-heading">
+            <h2 id="llm-heading">Text Improvement</h2>
+            <p>Rewrite provider for non-Raw styles.</p>
+          </div>
+
           <label for="llm-provider">Provider</label>
           <select id="llm-provider" name="llmProvider">
             <option value="gemini">Gemini</option>
           </select>
 
-          <label for="llm-api-key">API Key</label>
-          <input id="llm-api-key" name="llmApiKey" type="password" autocomplete="off">
+          <div class="field-header">
+            <label for="llm-api-key">API Key</label>
+            <span id="llm-key-state" class="field-state" data-state="missing">Missing</span>
+          </div>
+          <div class="secret-field">
+            <input id="llm-api-key" name="llmApiKey" type="password" autocomplete="off" spellcheck="false" aria-describedby="llm-api-key-help llm-api-key-error">
+            <button type="button" class="visibility-toggle" data-toggle-secret="llm-api-key" aria-controls="llm-api-key" aria-pressed="false">Show</button>
+          </div>
+          <p id="llm-api-key-help" class="field-note">Required for improved styles. Choose Raw to skip Gemini.</p>
+          <p id="llm-api-key-error" class="field-error" role="alert"></p>
         </section>
 
         <section class="settings-section" aria-labelledby="style-heading">
-          <h2 id="style-heading">Default Style</h2>
+          <div class="section-heading">
+            <h2 id="style-heading">Default Style</h2>
+            <p>Applied after transcription.</p>
+          </div>
+
           <label for="default-style">Style</label>
-          <select id="default-style" name="defaultStyleId"></select>
+          <select id="default-style" name="defaultStyleId" aria-describedby="style-description style-processing-note default-style-error"></select>
           <p id="style-description" class="field-note"></p>
+          <p id="style-processing-note" class="field-note"></p>
+          <p id="default-style-error" class="field-error" role="alert"></p>
         </section>
 
         <footer class="form-actions">
-          <button type="submit">Save Settings</button>
-          <p id="save-status" role="status" aria-live="polite"></p>
+          <button id="save-button" type="submit">Save Settings</button>
+          <p id="save-status" class="save-status" role="status" aria-live="polite"></p>
         </footer>
       </form>
     </main>

@@ -272,7 +272,9 @@ Options:
 
 - provider sections;
 - masked API keys;
+- key readiness feedback and show/hide controls;
 - default style selector;
+- style-dependent Gemini requirement messaging;
 - validation and save feedback.
 
 Popup:

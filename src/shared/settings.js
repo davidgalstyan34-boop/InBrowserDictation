@@ -134,6 +134,32 @@ export function resolveRewriteStyle(settingsValue = {}) {
 }
 
 /**
+ * Reports which credentials are required for the selected processing path.
+ *
+ * The Raw style bypasses the LLM provider, so the Gemini key is optional while
+ * the Deepgram key remains required for every dictation session.
+ */
+export function getConfigurationRequirements(settingsValue = {}) {
+  const settings = normalizeSettings(settingsValue);
+  const style = resolveRewriteStyle(settings);
+  const llmRequired = style.id !== "raw";
+
+  return {
+    styleId: style.id,
+    styleName: style.name,
+    sttApiKey: {
+      required: true,
+      configured: hasConfiguredApiKey(settings.sttApiKey)
+    },
+    llmApiKey: {
+      required: llmRequired,
+      configured: hasConfiguredApiKey(settings.llmApiKey),
+      bypassed: !llmRequired
+    }
+  };
+}
+
+/**
  * Loads settings from Chrome storage, or from an injected storage adapter in
  * tests.
  */
@@ -169,4 +195,8 @@ function isCompleteCustomStyle(style) {
 
 function normalizeProvider(value, supportedProviders, fallback) {
   return supportedProviders.includes(value) ? value : fallback;
+}
+
+function hasConfiguredApiKey(value) {
+  return typeof value === "string" && value.trim().length > 0;
 }

@@ -41,7 +41,7 @@ export async function showBusyState(content, session) {
 export async function showRecordingState(content, session) {
   await content.safeShowState(session.tabId, session.id, {
     status: session.status,
-    title: "Recording",
+    title: "Listening",
     detail: describeRecordingState(session)
   });
 }

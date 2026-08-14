@@ -19,6 +19,7 @@ export function renderDictationOverlay({ title, detail, tone = "default", status
   overlayElements.title.textContent = title || "Dictation";
   overlayElements.detail.textContent = detail || "";
   overlayElements.panel.dataset.tone = tone;
+  overlayElements.panel.dataset.status = status || "";
 
   const autoDismissDelay = getAutoDismissDelay({ status, tone });
   if (autoDismissDelay) {
@@ -72,6 +73,45 @@ function mountOverlay() {
       padding: 12px 14px;
     }
 
+    [data-heading] {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    [data-indicator] {
+      flex: 0 0 auto;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+
+    [data-panel][data-status="RECORDING"] [data-indicator] {
+      background: #dc2626;
+      animation: ibd-pulse 1.25s ease-in-out infinite;
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14);
+    }
+
+    [data-panel][data-status="TRANSCRIBING"] [data-indicator],
+    [data-panel][data-status="IMPROVING"] [data-indicator],
+    [data-panel][data-status="INSERTING"] [data-indicator] {
+      background: #2563eb;
+    }
+
+    [data-panel][data-tone="success"] [data-indicator] {
+      background: #16a34a;
+    }
+
+    [data-panel][data-tone="warning"] [data-indicator] {
+      background: #ca8a04;
+    }
+
+    [data-panel][data-tone="error"] [data-indicator] {
+      background: #dc2626;
+    }
+
     [data-panel][data-tone="muted"] {
       color: #47524d;
     }
@@ -93,10 +133,12 @@ function mountOverlay() {
 
     [data-title] {
       display: block;
+      min-width: 0;
       font-size: 13px;
       font-weight: 700;
       line-height: 1.25;
       letter-spacing: 0;
+      overflow-wrap: anywhere;
     }
 
     [data-detail] {
@@ -119,13 +161,37 @@ function mountOverlay() {
     [data-panel][data-tone="warning"] [data-detail] {
       color: #854d0e;
     }
+
+    @keyframes ibd-pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.45;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      [data-panel][data-status="RECORDING"] [data-indicator] {
+        animation: none;
+      }
+    }
   `;
 
   const panel = document.createElement("div");
   panel.dataset.panel = "";
   panel.dataset.tone = "default";
+  panel.dataset.status = "";
   panel.setAttribute("role", "status");
   panel.setAttribute("aria-live", "polite");
+
+  const headingElement = document.createElement("div");
+  headingElement.dataset.heading = "";
+
+  const indicatorElement = document.createElement("span");
+  indicatorElement.dataset.indicator = "";
+  indicatorElement.setAttribute("aria-hidden", "true");
 
   const titleElement = document.createElement("span");
   titleElement.dataset.title = "";
@@ -134,10 +200,12 @@ function mountOverlay() {
   const detailElement = document.createElement("span");
   detailElement.dataset.detail = "";
 
-  panel.append(titleElement, detailElement);
+  headingElement.append(indicatorElement, titleElement);
+  panel.append(headingElement, detailElement);
   overlayRoot.append(style, panel);
   overlayElements = {
     panel,
+    indicator: indicatorElement,
     title: titleElement,
     detail: detailElement
   };

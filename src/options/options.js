@@ -1,15 +1,16 @@
-import { BUILT_IN_STYLES, loadSettings, saveSettings, validateSettings } from "../shared/settings.js";
+import { loadSettings, saveSettings, validateSettings } from "../shared/settings.js";
+import { syncConfigurationFeedback, getRequiredConfigurationErrors } from "./configuration-feedback.js";
+import { createFieldErrorPresenter } from "./field-errors.js";
+import { getOptionsElements } from "./options-elements.js";
+import { readFormSettings, renderSettings } from "./settings-form.js";
+import { clearSaveStatus, showSaveStatus } from "./save-status.js";
+import { registerSecretVisibilityToggles } from "./secret-fields.js";
+import { populateStyleOptions, updateStyleDescription } from "./style-control.js";
 
-// Options page controller for provider credentials and default rewrite style.
-// It stays UI-only; validation and storage are delegated to shared/settings.js.
-const form = document.querySelector("#settings-form");
-const sttProvider = document.querySelector("#stt-provider");
-const sttApiKey = document.querySelector("#stt-api-key");
-const llmProvider = document.querySelector("#llm-provider");
-const llmApiKey = document.querySelector("#llm-api-key");
-const defaultStyle = document.querySelector("#default-style");
-const styleDescription = document.querySelector("#style-description");
-const saveStatus = document.querySelector("#save-status");
+// Thin options-page entrypoint. Focused modules own field rendering, validation
+// display, secret visibility, and style-dependent configuration feedback.
+const elements = getOptionsElements();
+const fieldErrors = createFieldErrorPresenter(elements);
 
 void initializeOptionsPage();
 
@@ -17,83 +18,90 @@ void initializeOptionsPage();
  * Loads current settings, renders the form, and registers page events.
  */
 async function initializeOptionsPage() {
-  populateStyleOptions();
+  populateStyleOptions(elements.defaultStyle);
+  registerEvents();
 
   try {
     const settings = await loadSettings();
-    renderSettings(settings);
+    renderLoadedSettings(settings);
   } catch (error) {
     console.warn("[In-Browser Dictation] Could not load settings.", error);
-    showSaveStatus("Settings could not be loaded. Reload the options page and try again.");
+    showSaveStatus(
+      elements.saveStatus,
+      "Settings could not be loaded. Reload the options page and try again.",
+      "error"
+    );
+  }
+}
+
+function registerEvents() {
+  elements.defaultStyle.addEventListener("change", handleStyleChange);
+
+  for (const input of [elements.sttApiKey, elements.llmApiKey]) {
+    input.addEventListener("input", () => {
+      fieldErrors.clear(input.name);
+      syncConfigurationFeedback(elements, readFormSettings(elements));
+      clearSaveStatus(elements.saveStatus);
+    });
   }
 
-  defaultStyle.addEventListener("change", () => {
-    updateStyleDescription(defaultStyle.value);
-  });
+  registerSecretVisibilityToggles(elements.secretToggleButtons);
 
-  form.addEventListener("submit", async (event) => {
+  elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
     await handleSave();
   });
 }
 
-/**
- * Populates the style select from code-defined styles.
- */
-function populateStyleOptions() {
-  for (const style of BUILT_IN_STYLES) {
-    const option = document.createElement("option");
-    option.value = style.id;
-    option.textContent = style.name;
-    defaultStyle.append(option);
-  }
+function renderLoadedSettings(settings) {
+  renderSettings(elements, settings);
+  updateStyleDescription(elements, settings.defaultStyleId);
+  fieldErrors.clearAll();
+  syncConfigurationFeedback(elements, readFormSettings(elements));
 }
 
-/**
- * Copies persisted settings into form controls.
- */
-function renderSettings(settings) {
-  sttProvider.value = settings.sttProvider;
-  sttApiKey.value = settings.sttApiKey;
-  llmProvider.value = settings.llmProvider;
-  llmApiKey.value = settings.llmApiKey;
-  defaultStyle.value = settings.defaultStyleId;
-  updateStyleDescription(settings.defaultStyleId);
+function handleStyleChange() {
+  updateStyleDescription(elements, elements.defaultStyle.value);
+  fieldErrors.clear("defaultStyleId");
+  fieldErrors.clear("llmApiKey");
+  syncConfigurationFeedback(elements, readFormSettings(elements));
+  clearSaveStatus(elements.saveStatus);
 }
 
-/**
- * Validates and saves the form values.
- */
 async function handleSave() {
-  const nextSettings = {
-    sttProvider: sttProvider.value,
-    sttApiKey: sttApiKey.value.trim(),
-    llmProvider: llmProvider.value,
-    llmApiKey: llmApiKey.value.trim(),
-    defaultStyleId: defaultStyle.value,
-    customStyles: []
-  };
+  fieldErrors.clearAll();
 
-  const validation = validateSettings(nextSettings);
+  const validation = validateSettings(readFormSettings(elements));
   if (!validation.ok) {
-    showSaveStatus(Object.values(validation.errors)[0] || "Check settings.");
+    fieldErrors.show(validation.errors);
+    showSaveStatus(elements.saveStatus, "Check the highlighted settings.", "error");
+    return;
+  }
+
+  const configurationErrors = getRequiredConfigurationErrors(validation.settings);
+  if (Object.keys(configurationErrors).length > 0) {
+    fieldErrors.show(configurationErrors);
+    syncConfigurationFeedback(elements, validation.settings);
+    showSaveStatus(elements.saveStatus, "Complete required settings before saving.", "error");
     return;
   }
 
   try {
-    await saveSettings(nextSettings);
-    showSaveStatus("Settings saved.");
+    const saveResult = await saveSettings(validation.settings);
+    if (!saveResult.ok) {
+      fieldErrors.show(saveResult.errors);
+      showSaveStatus(elements.saveStatus, "Check the highlighted settings.", "error");
+      return;
+    }
+
+    syncConfigurationFeedback(elements, saveResult.settings);
+    showSaveStatus(elements.saveStatus, "Settings saved.", "success");
   } catch (error) {
     console.warn("[In-Browser Dictation] Could not save settings.", error);
-    showSaveStatus("Settings could not be saved. Check extension storage permissions.");
+    showSaveStatus(
+      elements.saveStatus,
+      "Settings could not be saved. Check extension storage permissions.",
+      "error"
+    );
   }
-}
-
-function updateStyleDescription(styleId) {
-  const selected = BUILT_IN_STYLES.find((style) => style.id === styleId);
-  styleDescription.textContent = selected?.description ?? "";
-}
-
-function showSaveStatus(message) {
-  saveStatus.textContent = message;
 }
