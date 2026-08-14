@@ -32,6 +32,7 @@ Service worker:
 - Authoritative session state.
 - Keyboard command listener.
 - Active tab selection.
+- Owning-tab close detection and active-session cancellation.
 - Message routing to content script.
 - On-demand content-script injection for active tabs that missed static injection.
 - Later: provider orchestration and normalized errors.
@@ -160,6 +161,8 @@ Repeated commands:
 The Phase 5 implementation routes `IMPROVING -> INSERTING`, then completes after target insertion or clipboard fallback succeeds.
 
 Target capture happens during `STARTING`; the session moves to `RECORDING` only after the offscreen document reports that `MediaRecorder` started.
+
+If Chrome reports that the session's original tab closed, the service worker marks the session as `ERROR`, aborts active provider requests, and closes the offscreen recorder document. Unrelated tab closures are ignored.
 
 First-run microphone flow:
 

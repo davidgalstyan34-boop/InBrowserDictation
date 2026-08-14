@@ -1,4 +1,5 @@
 import { isMicrophonePermissionError } from "../../shared/audio-recording.js";
+import { DictationStatus } from "../../shared/dictation-state.js";
 import { toError } from "../utils/errors.js";
 import {
   showMicrophoneAccessGrantedState,
@@ -21,6 +22,7 @@ export function createRecordingFlow({
   failSession
 }) {
   return {
+    cancelRecordingForSession,
     closeRecorder,
     handleMicrophonePermissionResult,
     handleStartFailure,
@@ -29,6 +31,24 @@ export function createRecordingFlow({
     startRecordingForSession,
     stopRecordingForSession
   };
+
+  /**
+   * Stops any active recorder for a cancelled session and closes the document.
+   */
+  async function cancelRecordingForSession(session) {
+    if (session?.id && shouldAskRecorderToStop(session.status)) {
+      try {
+        await recorder.stop(session.id);
+      } catch (error) {
+        console.info("[In-Browser Dictation] Recorder stop during cancellation was not needed.", {
+          sessionId: session.id,
+          code: error.code || "RECORDER_CANCEL_STOP_SKIPPED"
+        });
+      }
+    }
+
+    await closeRecorder();
+  }
 
   /**
    * Captures the content-side insertion target before recording begins.
@@ -107,7 +127,11 @@ export function createRecordingFlow({
   async function processMicrophonePermissionResult(message) {
     const session = sessions.get();
 
-    if (!message.sessionId || message.sessionId !== session.id) {
+    if (
+      !message.sessionId
+        || message.sessionId !== session.id
+        || session.status !== DictationStatus.WAITING_FOR_MICROPHONE
+    ) {
       return { ok: false, ignored: true };
     }
 
@@ -177,4 +201,10 @@ export function createRecordingFlow({
     await requestMicrophonePermission();
     return true;
   }
+}
+
+function shouldAskRecorderToStop(status) {
+  return status === DictationStatus.STARTING
+    || status === DictationStatus.RECORDING
+    || status === DictationStatus.STOPPING;
 }

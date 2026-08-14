@@ -1,4 +1,5 @@
 import { MessageType, parseMessageEnvelope } from "../../shared/messages.js";
+import { DictationStatus } from "../../shared/dictation-state.js";
 import { createContentClient } from "../clients/content-client.js";
 import { createMicrophonePermissionClient } from "../clients/microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
@@ -64,7 +65,8 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
   return {
     handleCommand,
-    handleRuntimeMessage
+    handleRuntimeMessage,
+    handleTabRemoved
   };
 
   /**
@@ -103,6 +105,30 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
+   * Cancels the active session when its original tab is closed.
+   */
+  async function handleTabRemoved(tabId) {
+    const session = sessions.get();
+
+    if (!isCancellableSessionForTab(session, tabId)) {
+      return;
+    }
+
+    console.warn("[In-Browser Dictation] Cancelling session because its tab closed.", {
+      sessionId: session.id,
+      tabId
+    });
+
+    processingFlow.abortActiveRequest();
+    sessions.fail({
+      code: "DICTATION_TAB_CLOSED",
+      message: "The tab used for dictation was closed."
+    });
+
+    await recordingFlow.cancelRecordingForSession(session);
+  }
+
+  /**
    * Moves the session into ERROR and reports readable feedback to the page.
    */
   async function failSession(code, message) {
@@ -115,4 +141,14 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
     await showFailureState(content, failedSession, message);
   }
+}
+
+function isCancellableSessionForTab(session, tabId) {
+  if (!session?.id || session.tabId !== tabId) {
+    return false;
+  }
+
+  return session.status !== DictationStatus.IDLE
+    && session.status !== DictationStatus.SUCCESS
+    && session.status !== DictationStatus.ERROR;
 }

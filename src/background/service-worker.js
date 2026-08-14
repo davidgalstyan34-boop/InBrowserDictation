@@ -30,6 +30,12 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => (
   dictationController.handleRuntimeMessage({ rawMessage, sender, sendResponse })
 ));
 
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void dictationController.handleTabRemoved(tabId).catch((error) => {
+    console.error("[In-Browser Dictation] Tab removal handling failed.", error);
+  });
+});
+
 chrome.runtime.onInstalled.addListener((details) => {
   void commandDiagnostics.logShortcutState(`installed:${details.reason}`);
 });

@@ -19,39 +19,67 @@ export function createProcessingFlow({
   textImprovement,
   sessions
 }) {
+  let activeRequestController = null;
+
   return {
+    abortActiveRequest,
     processStoppedRecording
   };
+
+  /**
+   * Aborts active provider work when the owning tab closes or the session ends.
+   */
+  function abortActiveRequest() {
+    activeRequestController?.abort();
+  }
 
   /**
    * Transcribes stopped audio, improves text, and inserts final output.
    */
   async function processStoppedRecording(audio) {
-    const transcribingSession = sessions.markTranscribing(audio);
-    await showTranscribingState(content, transcribingSession);
+    const requestController = new AbortController();
+    activeRequestController = requestController;
 
-    const transcription = await speechToText.transcribe({
-      audio: transcribingSession.audio
-    });
-    const improvingSession = sessions.markTranscriptReady(transcription);
+    try {
+      const transcribingSession = sessions.markTranscribing(audio);
+      await showTranscribingState(content, transcribingSession);
 
-    await showImprovingState(content, improvingSession);
-    await improveTextForCurrentSession(improvingSession);
+      const transcription = await speechToText.transcribe({
+        audio: transcribingSession.audio,
+        signal: requestController.signal
+      });
+      throwIfProcessingAborted(requestController.signal);
+
+      const improvingSession = sessions.markTranscriptReady(transcription);
+      await showImprovingState(content, improvingSession);
+      await improveTextForCurrentSession(improvingSession, requestController.signal);
+    } finally {
+      if (activeRequestController === requestController) {
+        activeRequestController = null;
+      }
+    }
   }
 
   /**
    * Runs text improvement, then inserts improved text or raw fallback text.
    */
-  async function improveTextForCurrentSession(session) {
+  async function improveTextForCurrentSession(session, signal) {
     let insertingSession = null;
 
     try {
       const improvement = await textImprovement.improveText({
-        text: session.transcription?.transcript ?? ""
+        text: session.transcription?.transcript ?? "",
+        signal
       });
+      throwIfProcessingAborted(signal);
+
       insertingSession = sessions.markImprovedTextReady(improvement);
 
     } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+
       console.warn("[In-Browser Dictation] Text improvement failed; using raw transcript.", {
         sessionId: session.id,
         code: error.code || "LLM_FAILED",
@@ -62,6 +90,7 @@ export function createProcessingFlow({
     }
 
     await showInsertionReadyState(content, insertingSession);
+    throwIfProcessingAborted(signal);
     await insertOutputTextForCurrentSession(insertingSession);
   }
 
@@ -82,4 +111,14 @@ export function createProcessingFlow({
     const completedSession = sessions.markInsertionDone(insertionResponse.insertion);
     await showInsertionCompleteState(content, completedSession);
   }
+}
+
+function throwIfProcessingAborted(signal) {
+  if (!signal?.aborted) {
+    return;
+  }
+
+  const error = new Error("Dictation processing was cancelled.");
+  error.code = "DICTATION_PROCESSING_CANCELLED";
+  throw error;
 }
