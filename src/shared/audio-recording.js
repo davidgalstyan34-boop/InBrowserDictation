@@ -1,10 +1,10 @@
-export const AUDIO_MIME_TYPE_CANDIDATES = Object.freeze([
+const AUDIO_MIME_TYPE_CANDIDATES = Object.freeze([
   "audio/webm;codecs=opus",
   "audio/webm",
   "audio/mp4"
 ]);
 
-export const MIN_RECORDING_BYTES = 512;
+const MIN_RECORDING_BYTES = 512;
 
 /**
  * Chooses the first MIME type that the current browser says MediaRecorder can

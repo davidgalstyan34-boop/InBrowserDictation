@@ -64,7 +64,7 @@ export function describeInsertionState(insertion, warning = null) {
 /**
  * Describes the captured target summary without exposing DOM references.
  */
-export function describePreparedTarget(target) {
+function describePreparedTarget(target) {
   const kind = target?.kind ?? "none";
   const descriptionActions = {
     none: () => "No editable target captured",

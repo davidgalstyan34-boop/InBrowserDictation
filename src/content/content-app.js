@@ -11,7 +11,6 @@ let capturedTargetState = null;
 const messageHandlers = Object.freeze({
   [MessageType.CONTENT_SHOW_STATE]: renderStateMessage,
   [MessageType.CONTENT_PREPARE_DICTATION]: prepareDictation,
-  [MessageType.CONTENT_CANCEL_DICTATION]: cancelDictation,
   [MessageType.CONTENT_DISMISS_OVERLAY]: dismissOverlay,
   [MessageType.CONTENT_INSERT_TEXT]: insertText
 });
@@ -62,22 +61,6 @@ function prepareDictation({ message, sendResponse }) {
     ok: true,
     target: summarizeCapturedTarget(target)
   });
-}
-
-/**
- * Clears content-side session state when the background cancels a session.
- */
-function cancelDictation({ message, sendResponse }) {
-  runWithCurrentCapturedTarget(message.sessionId, () => {
-    capturedTargetState = null;
-    renderDictationOverlay({
-      title: message.payload.title || "Cancelled",
-      detail: message.payload.detail || "Dictation stopped",
-      tone: "muted"
-    });
-  });
-
-  sendResponse({ ok: true });
 }
 
 /**

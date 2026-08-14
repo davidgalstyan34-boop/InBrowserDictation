@@ -108,7 +108,6 @@ Messages use a small protocol envelope:
 Important message families:
 
 - `content.prepareDictation`: capture target and show immediate feedback.
-- `content.cancelDictation`: clear placeholder/session UI.
 - `content.dismissOverlay`: remove terminal overlay feedback before a replacement session starts.
 - `content.showState`: update overlay.
 - `content.insertText`: insert final text into the captured target or copy it to the clipboard.

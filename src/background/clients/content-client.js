@@ -14,7 +14,6 @@ export function createContentClient({ chromeApi }) {
   return {
     getActiveTab,
     prepareDictation,
-    dismissOverlay,
     insertText,
     safeDismissOverlay,
     showState,

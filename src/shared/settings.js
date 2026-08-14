@@ -37,8 +37,8 @@ export const BUILT_IN_STYLES = Object.freeze([
   }
 ]);
 
-export const SUPPORTED_STT_PROVIDERS = Object.freeze(["deepgram"]);
-export const SUPPORTED_LLM_PROVIDERS = Object.freeze(["gemini"]);
+const SUPPORTED_STT_PROVIDERS = Object.freeze(["deepgram"]);
+const SUPPORTED_LLM_PROVIDERS = Object.freeze(["gemini"]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
   sttProvider: "deepgram",
