@@ -32,7 +32,7 @@ export function describeOutputTextState(outputText, warning = null) {
   const suffix = textLength > 0 ? ` (${textLength} characters)` : "";
 
   if (warning) {
-    return `Raw transcript preserved${suffix}; inserting fallback text.`;
+    return `${describeImprovementWarning(warning)}; inserting raw transcript${suffix}.`;
   }
 
   if (outputText?.source === "raw-style") {
@@ -52,12 +52,12 @@ export function describeInsertionState(insertion, warning = null) {
 
   if (insertion?.method === "clipboard") {
     return warning
-      ? `Raw transcript copied to clipboard${suffix}; improvement failed.`
+      ? `Raw transcript copied to clipboard${suffix}; ${describeImprovementWarning(warning)}.`
       : `Copied to clipboard${suffix}; ${describeFallbackReason(insertion)}.`;
   }
 
   return warning
-    ? `Raw transcript inserted into ${target}${suffix}; improvement failed.`
+    ? `Raw transcript inserted into ${target}${suffix}; ${describeImprovementWarning(warning)}.`
     : `Inserted into ${target}${suffix}.`;
 }
 
@@ -103,4 +103,26 @@ function describeFallbackReason(insertion) {
   };
 
   return descriptions[reason] ?? "target insertion was unavailable";
+}
+
+function describeImprovementWarning(warning) {
+  const descriptions = {
+    LLM_API_KEY_MISSING: "Gemini key missing",
+    LLM_AUTH_FAILED: "Gemini key rejected",
+    LLM_RATE_LIMITED: "Gemini rate limit reached",
+    LLM_MODEL_UNAVAILABLE: "Gemini model unavailable",
+    LLM_TIMEOUT: "Gemini request timed out",
+    LLM_CANCELLED: "Gemini request cancelled",
+    LLM_PROVIDER_REJECTED_TEXT: "Gemini rejected the transcript",
+    LLM_PROVIDER_UNAVAILABLE: "Gemini temporarily unavailable",
+    LLM_INVALID_RESPONSE: "Gemini returned an unreadable response",
+    LLM_EMPTY_TEXT: "Gemini returned no improved text",
+    LLM_NETWORK_FAILED: "Gemini request failed",
+    LLM_PROVIDER_FAILED: "Gemini improvement failed",
+    LLM_FETCH_UNAVAILABLE: "Gemini requests are unavailable",
+    LLM_SETTINGS_UNAVAILABLE: "Gemini settings unavailable",
+    LLM_TEXT_MISSING: "No transcript was available for Gemini"
+  };
+
+  return descriptions[warning?.code] ?? "Text improvement failed";
 }

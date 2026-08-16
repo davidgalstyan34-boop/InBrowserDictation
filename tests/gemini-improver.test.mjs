@@ -140,21 +140,39 @@ describe("Gemini text improver", () => {
       { code: "LLM_EMPTY_TEXT" }
     );
 
+  });
+
+  it("classifies invalid API-key 400 responses as auth failures with safe diagnostics", async () => {
+    let requestCount = 0;
+
     await assert.rejects(
       improveTextWithGemini({
         text: "hello",
         style,
         settings: { llmApiKey: "bad-key" },
-        fetchApi: async () => new Response(JSON.stringify({
-          error: {
-            code: 400,
-            status: "INVALID_ARGUMENT",
-            message: "API key not valid. Please pass a valid API key."
-          }
-        }), { status: 400 })
+        fetchApi: async () => {
+          requestCount += 1;
+          return new Response(JSON.stringify({
+            error: {
+              code: 400,
+              status: "INVALID_ARGUMENT",
+              message: "API key not valid. Please pass a valid API key."
+            }
+          }), { status: 400 });
+        }
       }),
-      { code: "LLM_AUTH_FAILED" }
+      (error) => {
+        assert.equal(error.code, "LLM_AUTH_FAILED");
+        assert.equal(error.providerStatus, 400);
+        assert.equal(error.providerErrorCode, "400");
+        assert.equal(error.providerErrorStatus, "INVALID_ARGUMENT");
+        assert.equal(error.providerModel, DEFAULT_GEMINI_MODEL);
+        assert.equal(error.requestShape, "snake-case-system-instruction");
+        return true;
+      }
     );
+
+    assert.equal(requestCount, 1);
   });
 
   it("retries with alternate request shapes when Gemini rejects a REST field name", async () => {
@@ -249,6 +267,75 @@ describe("Gemini text improver", () => {
     assert.match(requests[2].contents[0].parts[0].text, /Return only the transformed text/);
     assert.match(requests[2].contents[0].parts[0].text, /inline compatible result/);
     assert.equal(result.text, "Inline-compatible result.");
+  });
+
+  it("tries request-shape fallback before moving to the next Gemini model", async () => {
+    const requests = [];
+    const fetchApi = async (url, options) => {
+      requests.push({
+        url,
+        body: JSON.parse(options.body)
+      });
+
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "Invalid JSON payload received. Unknown name \"system_instruction\": Cannot find field."
+          }
+        }), { status: 400 });
+      }
+
+      if (requests.length === 2) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: `The model ${DEFAULT_GEMINI_MODEL} is not supported for generateContent.`
+          }
+        }), { status: 400 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "Ordered fallback result." }
+              ]
+            },
+            finishReason: "STOP"
+          }
+        ]
+      }), { status: 200 });
+    };
+
+    const result = await improveTextWithGemini({
+      text: "ordered fallback result",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi
+    });
+
+    assert.equal(requests.length, 3);
+    assert.equal(
+      requests[0].url,
+      `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
+    );
+    assert.equal(
+      requests[1].url,
+      `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
+    );
+    assert.equal(
+      requests[2].url,
+      `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_GEMINI_MODELS[0]}:generateContent`
+    );
+    assert.equal("system_instruction" in requests[0].body, true);
+    assert.equal("systemInstruction" in requests[1].body, true);
+    assert.equal("system_instruction" in requests[2].body, true);
+    assert.equal(result.text, "Ordered fallback result.");
+    assert.equal(result.providerMeta.model, FALLBACK_GEMINI_MODELS[0]);
   });
 
   it("falls back to a stable Gemini model when the primary model is unavailable", async () => {

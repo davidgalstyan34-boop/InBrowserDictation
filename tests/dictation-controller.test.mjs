@@ -315,6 +315,229 @@ describe("dictation controller", () => {
     });
   });
 
+  it("reports busy instead of toggling again while text improvement is running", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const geminiStarted = createDeferred();
+      const geminiResponse = createDeferred();
+
+      globalThis.fetch = async (url) => {
+        const href = String(url);
+
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse();
+        }
+
+        if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+          geminiStarted.resolve();
+          return await geminiResponse.promise;
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            llmApiKey: "gemini-key"
+          },
+          tabMessages,
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-improving-busy"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+        const stopPromise = controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        await geminiStarted.promise;
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        assert.equal(getPublicSession(controller).status, DictationStatus.IMPROVING);
+        assert.equal(
+          runtimeMessages.filter((message) => message.type === MessageType.OFFSCREEN_STOP_RECORDING).length,
+          1
+        );
+        assert.equal(
+          tabMessages.some(({ message }) => (
+            message.type === MessageType.CONTENT_SHOW_STATE
+              && message.payload.title === "Busy"
+              && message.payload.status === DictationStatus.IMPROVING
+          )),
+          true
+        );
+
+        geminiResponse.resolve(createGeminiTextResponse("Improved transcript."));
+        await stopPromise;
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  it("aborts provider work when the owning tab closes during text improvement", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const geminiStarted = createDeferred();
+      let improvementSignal = null;
+
+      globalThis.fetch = async (url, options) => {
+        const href = String(url);
+
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse();
+        }
+
+        if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+          improvementSignal = options.signal;
+          geminiStarted.resolve();
+
+          return await new Promise((_resolve, reject) => {
+            improvementSignal.addEventListener("abort", () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            }, { once: true });
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            llmApiKey: "gemini-key"
+          },
+          tabMessages,
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-improvement-tab-close"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+        const stopPromise = controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        await geminiStarted.promise;
+        await controller.handleTabRemoved(7);
+        await stopPromise;
+
+        const session = getPublicSession(controller);
+
+        assert.equal(improvementSignal.aborted, true);
+        assert.equal(session.status, DictationStatus.ERROR);
+        assert.equal(session.error.code, "DICTATION_TAB_CLOSED");
+        assert.equal(
+          tabMessages.some(({ message }) => message.type === MessageType.CONTENT_INSERT_TEXT),
+          false
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  it("shows a specific raw-transcript warning when Gemini rejects the key", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+
+      globalThis.fetch = async (url) => {
+        const href = String(url);
+
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse();
+        }
+
+        if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+          return new Response(JSON.stringify({
+            error: {
+              code: 400,
+              status: "INVALID_ARGUMENT",
+              message: "API key not valid. Please pass a valid API key."
+            }
+          }), { status: 400 });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            llmApiKey: "bad-gemini-key"
+          },
+          tabMessages,
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-gemini-auth-warning"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        const insertionReady = tabMessages.find(({ message }) => (
+          message.type === MessageType.CONTENT_SHOW_STATE
+            && message.payload.status === DictationStatus.INSERTING
+            && message.payload.title === "Inserting raw transcript"
+        ));
+        const completed = tabMessages.find(({ message }) => (
+          message.type === MessageType.CONTENT_SHOW_STATE
+            && message.payload.status === DictationStatus.SUCCESS
+        ));
+        const insertedText = tabMessages.find(({ message }) => (
+          message.type === MessageType.CONTENT_INSERT_TEXT
+        ));
+
+        assert.equal(getPublicSession(controller).status, DictationStatus.SUCCESS);
+        assert.equal(getPublicSession(controller).warning.code, "LLM_AUTH_FAILED");
+        assert.equal(
+          insertionReady.message.payload.detail,
+          "Gemini key rejected; inserting raw transcript (14 characters)."
+        );
+        assert.equal(completed.message.payload.detail.includes("Gemini key rejected"), true);
+        assert.equal(insertedText.message.payload.text, "raw transcript");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
   it("reports the latest successful result to the popup and retries rewriting it", async () => {
     await withMutedConsole(async () => {
       const originalFetch = globalThis.fetch;
@@ -462,6 +685,76 @@ describe("dictation controller", () => {
       assert.equal(popupState.shortcut.settingsUrl, "chrome://extensions/shortcuts");
     });
   });
+
+  it("reports popup retry failures for missing and invalid Gemini keys", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const storedSettings = {
+        sttApiKey: "deepgram-key",
+        defaultStyleId: "raw",
+        llmApiKey: ""
+      };
+
+      globalThis.fetch = async (url) => {
+        const href = String(url);
+
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse();
+        }
+
+        if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+          return new Response(JSON.stringify({
+            error: {
+              code: 400,
+              status: "INVALID_ARGUMENT",
+              message: "API key not valid. Please pass a valid API key."
+            }
+          }), { status: 400 });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings,
+          tabMessages,
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-popup-retry-failure"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        storedSettings.defaultStyleId = "default";
+        storedSettings.llmApiKey = "";
+
+        const missingKey = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
+        assert.equal(missingKey.ok, false);
+        assert.equal(missingKey.error.code, "LLM_API_KEY_MISSING");
+
+        storedSettings.llmApiKey = "bad-gemini-key";
+
+        const invalidKey = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
+        assert.equal(invalidKey.ok, false);
+        assert.equal(invalidKey.error.code, "LLM_AUTH_FAILED");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });
 
 function createChromeApi({
@@ -584,6 +877,70 @@ function createTestAudioPayload() {
     capturedAt: 1000,
     dataUrl: "data:audio/webm;base64,aGVsbG8="
   };
+}
+
+function createRecordingRuntimeHandler(runtimeMessages) {
+  return async (message) => {
+    runtimeMessages.push(message);
+
+    if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+      return {
+        ok: true,
+        recording: {
+          startedAt: 1000,
+          tabId: 7,
+          mimeType: "audio/webm"
+        }
+      };
+    }
+
+    if (message.type === MessageType.OFFSCREEN_STOP_RECORDING) {
+      return {
+        ok: true,
+        audio: createTestAudioPayload()
+      };
+    }
+
+    throw new Error(`Unexpected runtime message: ${message.type}`);
+  };
+}
+
+function createDeepgramTranscriptResponse(transcript = "raw transcript") {
+  return createJsonResponse({
+    metadata: {
+      request_id: "deepgram-request",
+      duration: 1.2
+    },
+    results: {
+      channels: [
+        {
+          alternatives: [
+            {
+              transcript,
+              confidence: 0.98
+            }
+          ]
+        }
+      ]
+    }
+  });
+}
+
+function createGeminiTextResponse(text) {
+  return createJsonResponse({
+    responseId: "gemini-response",
+    modelVersion: "gemini-test",
+    candidates: [
+      {
+        finishReason: "STOP",
+        content: {
+          parts: [
+            { text }
+          ]
+        }
+      }
+    ]
+  });
 }
 
 function createDeferred() {
