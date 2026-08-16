@@ -9,7 +9,7 @@ const DEFAULT_DEEPGRAM_MODEL = "nova-3";
 const DEFAULT_STT_TIMEOUT_MS = 45_000;
 
 /**
- * Deepgram-backed implementation of the Phase 3 speech-to-text provider.
+ * Deepgram-backed implementation of the speech-to-text provider.
  *
  * This module owns Deepgram request details, response parsing, and provider
  * error normalization so the dictation controller only sees a stable

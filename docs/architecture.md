@@ -1,6 +1,11 @@
-# Architecture Proposal
+# Architecture
 
-## 1. Chosen Stack
+This describes the extension as it is built. Where a decision has a non-obvious
+reason, the reason is stated with it. The build order that got here is recorded
+at the end, separately, so it cannot be mistaken for a description of the
+current design.
+
+## 1. Stack
 
 - Language: dependency-free JavaScript with small shared modules and JSDoc-friendly shapes.
 - Build: a Node script that copies `src/` into `dist/`.
@@ -19,11 +24,11 @@ This keeps the first implementation window focused on browser behavior instead o
 - Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`, `clipboardWrite`.
 - Current host permissions: `https://api.deepgram.com/*`, `https://generativelanguage.googleapis.com/*`.
 
-`activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. Future phases should add only the permissions they need.
+`activeTab` and `scripting` let the command path inject the content-script entrypoint into the active tab when an already-open page has no receiver after an unpacked extension reload. New permissions are added only when something needs them.
 
-The Deepgram host permission is required for Phase 3 because the service worker posts the captured audio blob to the configured STT provider. The Google Generative Language host permission is required for Phase 4 because the service worker posts transcript text to the configured Gemini provider.
+The Deepgram host permission is needed because the service worker posts the captured audio blob to the STT provider. The Google Generative Language host permission is needed because the service worker posts transcript text to the Gemini provider.
 
-`clipboardWrite` is required for Phase 5 because the content script attempts to copy final text when the originally captured DOM target is detached, stale, unsupported, or unavailable.
+`clipboardWrite` is needed because the content script copies final text when the originally captured DOM target is detached, stale, unsupported, or unavailable.
 
 ## 3. Execution Contexts
 
@@ -35,7 +40,7 @@ Service worker:
 - Owning-tab close detection and active-session cancellation.
 - Message routing to content script.
 - On-demand content-script injection for active tabs that missed static injection.
-- Later: provider orchestration and normalized errors.
+- Provider orchestration and normalized errors.
 
 Content script:
 
@@ -76,7 +81,7 @@ Background source layout:
 
 ## 4. Audio Design
 
-Manifest V3 service workers do not provide a stable DOM/media environment. Recording should use an offscreen document for microphone work.
+Manifest V3 service workers do not provide a stable DOM/media environment, so microphone work happens in an offscreen document.
 
 Flow:
 
@@ -84,16 +89,16 @@ Flow:
 command -> service worker -> offscreen recorder -> audio blob -> service worker
 ```
 
-The recorder should:
+The recorder:
 
-- request microphone permission on start;
-- use `MediaRecorder`;
-- choose a provider-compatible MIME type such as `audio/webm`;
-- stop all media tracks after recording;
-- stop at a maximum recording length, keeping the audio captured so far and telling the service worker to continue the pipeline;
-- reject empty or tiny recordings before STT;
-- report normalized microphone and recorder errors;
-- return a JSON-safe audio payload because Chrome extension messaging should not depend on passing `Blob` objects directly.
+- requests microphone permission on start;
+- uses `MediaRecorder`;
+- chooses a provider-compatible MIME type such as `audio/webm`;
+- stops all media tracks after recording;
+- stops at a maximum recording length, keeping the audio captured so far and telling the service worker to continue the pipeline;
+- rejects empty or tiny recordings before STT;
+- reports normalized microphone and recorder errors;
+- returns a JSON-safe audio payload, because extension messaging cannot be relied on to structured-clone `Blob` objects across every Chrome context.
 
 ## 5. Messaging Design
 
@@ -115,8 +120,8 @@ Important message families:
 - `content.dismissOverlay`: remove terminal overlay feedback before a replacement session starts.
 - `content.showState`: update overlay.
 - `content.insertText`: insert final text into the captured target or copy it to the clipboard.
-- `runtime.getState`: options/popup can inspect current service-worker state.
-- `runtime.getPopupState`: popup-only state including the latest recoverable result text.
+- `runtime.getPopupState`: popup-only state, including the current session snapshot and the latest recoverable result text.
+- `runtime.clearRecentResult`: forget the stored latest result.
 - `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result. The payload echoes the session's tab id so a suspended service worker can rebuild the session instead of discarding a grant.
 - `runtime.toggleDictation`: popup entrypoint into the same policy as the keyboard command.
 - `runtime.cancelDictation`: popup entrypoint that abandons a session stuck in a non-toggleable state.
@@ -166,7 +171,7 @@ Repeated commands:
 - `RECORDING`: stop current session.
 - `SUCCESS` or `ERROR`: reset to idle before accepting new work.
 
-The Phase 5 implementation routes `IMPROVING -> INSERTING`, then completes after target insertion or clipboard fallback succeeds.
+Improvement routes into `INSERTING` whether it succeeded or fell back, and the session completes once target insertion or clipboard fallback succeeds.
 
 Target capture happens during `STARTING`; the session moves to `RECORDING` only after the offscreen document reports that `MediaRecorder` started.
 
@@ -225,7 +230,7 @@ Changed focus:
 - use the captured target if still valid.
 - fallback to clipboard if target is detached, invalid, or insertion fails.
 
-Phase 5 insertion response:
+Insertion response:
 
 ```js
 insertText({ text }) -> { method, targetKind, textLength, fallbackReason }
@@ -241,7 +246,7 @@ Interface:
 transcribe({ audioBlob, mimeType, settings, signal }) -> { transcript, providerMeta }
 ```
 
-Initial provider: Deepgram.
+Current provider: Deepgram. The facade dispatches on the stored `sttProvider`.
 
 Provider code must normalize:
 
@@ -251,7 +256,7 @@ Provider code must normalize:
 - invalid JSON;
 - empty transcript.
 
-Provider details should not leak into state, insertion, or UI modules.
+Provider details do not leak into state, insertion, or UI modules.
 
 ## 9. LLM Provider Abstraction
 
@@ -261,7 +266,7 @@ Interface:
 improveText({ text, style, settings, signal }) -> { text, providerMeta }
 ```
 
-Initial provider: Gemini Generate Content API.
+Current provider: Gemini Generate Content API. The facade dispatches on the stored `llmProvider`.
 
 Current request shape:
 
@@ -287,7 +292,7 @@ Prompt rules:
 
 If LLM fails after STT succeeds, insert or copy the raw transcript and show a non-destructive warning.
 
-Phase 5 preserves the fallback as private session output, then inserts or copies that output.
+The fallback is kept as private session output, which is then inserted or copied.
 
 ## 10. Storage Model
 
@@ -306,6 +311,8 @@ Minimal settings:
 
 Built-in styles are code-defined and versioned. Custom styles are stored as normalized records with generated stable ids, display names, optional descriptions, and rewrite instructions. Built-ins remain code-defined and keep priority over custom ids.
 
+The popup can clear the stored result on demand, so a user does not have to wait for the browser session to end to take it out of storage.
+
 The latest result is stored temporarily in `chrome.storage.session`. It includes the final text, raw transcript, style id, insertion metadata, and timestamps. It does not build a history.
 
 The record is written as soon as final text exists, before insertion is attempted, and rewritten afterwards with insertion metadata. Insertion is the step most likely to fail irrecoverably — a detached target plus a clipboard write the browser refuses — and nothing else holds that text, because overlays deliberately never echo it. Saving only on success would keep a record exactly when it is least needed.
@@ -317,7 +324,7 @@ Overlay:
 - most important UI surface;
 - visible immediately after shortcut;
 - shows state, success, warning, and error messages;
-- should auto-dismiss after successful dictation.
+- auto-dismisses after successful dictation.
 
 Options:
 
@@ -372,7 +379,7 @@ Manual tests:
 - denied microphone permission;
 - STT succeeds and LLM fails.
 
-Compatibility matrix should be documented before submission.
+A compatibility matrix across target editors is still to be documented.
 
 ## 14. Risks
 
@@ -384,9 +391,13 @@ Compatibility matrix should be documented before submission.
 - Restricted pages cannot receive content scripts.
 - Tab close/navigation should result in safe failure or clipboard fallback.
 
-## 15. Implementation Sequence
+## 15. Build History
 
-P0 vertical path:
+This section is history, not design. It records the order the extension was
+built in, which explains why some modules exist as separate layers. Nothing here
+describes current behavior; the sections above do.
+
+The vertical path, each step a working slice:
 
 1. Runtime skeleton: manifest, service worker, content script, options storage, keyboard command, basic messaging.
 2. Recording: offscreen recorder, microphone permission, start/stop, cleanup, audio blob.
@@ -394,10 +405,16 @@ P0 vertical path:
 4. Text improvement: LLM improvement, built-in styles, raw transcript fallback.
 5. Insertion: target capture, safe insertion, contenteditable, clipboard fallback.
 6. Product feedback: overlay and settings polish.
-7. P1 differentiation: custom styles, latest-result recovery, popup controls, retry rewrite, richer editor compatibility, and focused unit tests.
+7. Differentiation: custom styles, latest-result recovery, popup controls, retry rewrite, richer editor compatibility, and focused unit tests.
 
-Drop first if schedule slips:
+A subsequent review pass addressed correctness and coverage:
 
-- full STT/audio retry;
-- advanced rich-editor adapters;
-- visual polish beyond clear state feedback.
+- Error normalization: browser `DOMException`s were passing through the
+  "already normalized?" guard because their legacy `code` is numeric, which made
+  every timeout and cancellation message unreachable.
+- Session identity: the session store now rejects mutations from a superseded
+  session, and overlapping toggles are dropped rather than started.
+- Recoverability: the final text is stored before insertion is attempted, and
+  states that could not exit on their own now have deadlines and a cancel.
+- Reach: content scripts run in every frame and resolve focus through shadow
+  roots, so iframe and web-component editors are supported.

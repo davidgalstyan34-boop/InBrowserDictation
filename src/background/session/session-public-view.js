@@ -22,7 +22,7 @@ export function toPublicSession(session) {
     improvement: toPublicImprovement(session.improvement),
     outputText: toPublicOutputText(session.outputText),
     insertion: toPublicInsertion(session.insertion),
-    completedAt: session.completedAt,
+    updatedAt: session.updatedAt,
     warning: session.warning,
     error: session.error
   };

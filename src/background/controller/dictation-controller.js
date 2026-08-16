@@ -78,12 +78,12 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   });
 
   const runtimeMessageHandlers = Object.freeze({
-    [MessageType.RUNTIME_GET_STATE]: reportRuntimeState,
     [MessageType.RUNTIME_GET_POPUP_STATE]: reportPopupState,
     [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult,
     [MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT]: retryRecentImprovement,
     [MessageType.RUNTIME_TOGGLE_DICTATION]: toggleFromRuntimeMessage,
     [MessageType.RUNTIME_CANCEL_DICTATION]: cancelFromRuntimeMessage,
+    [MessageType.RUNTIME_CLEAR_RECENT_RESULT]: clearRecentResult,
     [MessageType.OFFSCREEN_RECORDING_DURATION_CAPPED]: handleRecordingDurationCapped
   });
 
@@ -115,17 +115,6 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     }
 
     return handler({ message, sender, sendResponse });
-  }
-
-  /**
-   * Returns a public session snapshot for options, diagnostics, and future UI.
-   */
-  function reportRuntimeState({ sendResponse }) {
-    sendResponse({
-      ok: true,
-      session: sessions.toPublicSession()
-    });
-    return false;
   }
 
   /**
@@ -216,6 +205,26 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
         sendResponse({
           ok: false,
           error: toMessageError(error, "Dictation could not be cancelled.")
+        });
+      });
+
+    return true;
+  }
+
+  /**
+   * Forgets the stored latest result.
+   *
+   * The result outlives the session it came from so the popup can recover text
+   * that never reached the page. This is how a user takes it back out of
+   * storage without waiting for the browser session to end.
+   */
+  function clearRecentResult({ sendResponse }) {
+    void recentResults.clear()
+      .then(() => sendResponse({ ok: true, recentResult: null }))
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "The latest result could not be cleared.")
         });
       });
 
@@ -371,7 +380,8 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
         textLength: improvement.text.length,
         fallbackReason: null
       },
-      completedAt: Date.now()
+      completedAt: Date.now(),
+      capturedAt: Date.now()
     });
   }
 }

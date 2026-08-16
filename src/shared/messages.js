@@ -13,7 +13,7 @@ export const MessageType = Object.freeze({
   CONTENT_INSERT_TEXT: "content.insertText",
   CONTENT_SHOW_STATE: "content.showState",
   RUNTIME_CANCEL_DICTATION: "runtime.cancelDictation",
-  RUNTIME_GET_STATE: "runtime.getState",
+  RUNTIME_CLEAR_RECENT_RESULT: "runtime.clearRecentResult",
   RUNTIME_GET_POPUP_STATE: "runtime.getPopupState",
   RUNTIME_MICROPHONE_PERMISSION_RESULT: "runtime.microphonePermissionResult",
   RUNTIME_RETRY_RECENT_IMPROVEMENT: "runtime.retryRecentImprovement",

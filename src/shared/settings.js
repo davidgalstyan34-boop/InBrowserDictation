@@ -76,13 +76,14 @@ export function normalizeSettings(value = {}) {
   const obsoleteSttProvider = typeof value.sttProvider === "string" && value.sttProvider !== sttProvider;
   const obsoleteLlmProvider = typeof value.llmProvider === "string" && value.llmProvider !== llmProvider;
 
+  // Only known keys are carried forward. Spreading the stored value would keep
+  // fields from older builds alive forever, because saving writes the
+  // normalized object straight back to storage.
   return {
-    ...DEFAULT_SETTINGS,
-    ...value,
     sttProvider,
-    sttApiKey: obsoleteSttProvider ? "" : value.sttApiKey ?? "",
+    sttApiKey: obsoleteSttProvider ? "" : normalizeApiKey(value.sttApiKey),
     llmProvider,
-    llmApiKey: obsoleteLlmProvider ? "" : value.llmApiKey ?? "",
+    llmApiKey: obsoleteLlmProvider ? "" : normalizeApiKey(value.llmApiKey),
     defaultStyleId: typeof value.defaultStyleId === "string"
       ? value.defaultStyleId
       : DEFAULT_SETTINGS.defaultStyleId,
@@ -106,14 +107,6 @@ export function validateSettings(value) {
 
   if (!styleIds.has(settings.defaultStyleId)) {
     errors.defaultStyleId = "Choose a valid default style.";
-  }
-
-  if (settings.sttApiKey && typeof settings.sttApiKey !== "string") {
-    errors.sttApiKey = "STT API key must be text.";
-  }
-
-  if (settings.llmApiKey && typeof settings.llmApiKey !== "string") {
-    errors.llmApiKey = "LLM API key must be text.";
   }
 
   for (const [index, style] of settings.customStyles.entries()) {
@@ -142,8 +135,8 @@ export function validateSettings(value) {
 /**
  * Resolves the selected rewrite style from normalized settings.
  *
- * Built-in styles are preferred over custom styles with the same id so P0/P1
- * behavior remains stable even if later custom-style management allows edits.
+ * Built-in styles win over a custom style with the same id, so a custom style
+ * cannot silently redefine what a built-in name means.
  */
 export function resolveRewriteStyle(settingsValue = {}) {
   const settings = normalizeSettings(settingsValue);
@@ -292,4 +285,11 @@ function hasConfiguredApiKey(value) {
 
 function normalizeTextValue(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Keeps a non-string key from reaching provider code that calls `.trim()`.
+ */
+function normalizeApiKey(value) {
+  return typeof value === "string" ? value : "";
 }

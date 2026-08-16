@@ -19,7 +19,7 @@ describe("recent result store", () => {
       },
       insertion: null,
       warning: null,
-      completedAt: 2000
+      updatedAt: 2000
     }, () => 3000);
 
     assert.equal(result.finalText, "Final transcript.");
@@ -60,7 +60,7 @@ describe("recent result store", () => {
         textLength: 17
       },
       warning: null,
-      completedAt: 2000
+      updatedAt: 2000
     }, () => 3000);
 
     assert.deepEqual(result, {

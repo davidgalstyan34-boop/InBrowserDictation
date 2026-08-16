@@ -6,10 +6,7 @@ import {
   GEMINI_REQUEST_SHAPES,
   improveTextWithGemini
 } from "./gemini-improver.js";
-import {
-  createTextImprovementError,
-  normalizeTextImprovementError
-} from "./text-improvement-errors.js";
+import { createTextImprovementError } from "./text-improvement-errors.js";
 
 // Maps the stored `llmProvider` setting to an implementation. Adding a provider
 // means adding an entry here *and* to SUPPORTED_LLM_PROVIDERS in settings.js;
@@ -67,21 +64,19 @@ export function createTextImprovementClient({
       );
     }
 
-    try {
-      return {
-        ...await improveWithProvider({
-          text,
-          style,
-          settings,
-          fetchApi,
-          signal,
-          compatibility
-        }),
-        source: "llm"
-      };
-    } catch (error) {
-      throw normalizeTextImprovementError(error);
-    }
+    // Provider implementations normalize their own failures, so there is no
+    // second normalization pass here.
+    return {
+      ...await improveWithProvider({
+        text,
+        style,
+        settings,
+        fetchApi,
+        signal,
+        compatibility
+      }),
+      source: "llm"
+    };
   }
 }
 

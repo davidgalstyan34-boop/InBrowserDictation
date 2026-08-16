@@ -95,7 +95,9 @@ export function createRecentResultFromSession(session, now = () => Date.now()) {
     styleId: session.outputText.styleId,
     warning: session.warning,
     insertion: session.insertion,
-    completedAt: session.completedAt,
+    // The session tracks when it last changed; for a session that has produced
+    // final text, that is when the result was completed.
+    completedAt: session.updatedAt,
     capturedAt: now()
   });
 }

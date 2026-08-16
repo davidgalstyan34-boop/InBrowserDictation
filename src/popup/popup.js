@@ -16,6 +16,7 @@ const elements = {
   copyFinalButton: document.querySelector("#copy-final-button"),
   copyRawButton: document.querySelector("#copy-raw-button"),
   retryButton: document.querySelector("#retry-button"),
+  clearButton: document.querySelector("#clear-button"),
   popupStatus: document.querySelector("#popup-status")
 };
 
@@ -62,6 +63,15 @@ function registerEvents() {
 
   elements.copyRawButton.addEventListener("click", async () => {
     await copyText(popupState?.recentResult?.rawTranscript, "Copied raw transcript.");
+  });
+
+  elements.clearButton.addEventListener("click", async () => {
+    await runPopupAction(async () => {
+      elements.clearButton.disabled = true;
+      await sendRuntimeMessage(MessageType.RUNTIME_CLEAR_RECENT_RESULT);
+      popupState = { ...popupState, recentResult: null };
+      renderPopupState(popupState);
+    }, "Last result cleared.");
   });
 
   elements.retryButton.addEventListener("click", async () => {
@@ -122,6 +132,7 @@ function renderPopupState(state) {
   elements.copyFinalButton.disabled = !canCopyFinal;
   elements.copyRawButton.disabled = !canCopyRaw;
   elements.retryButton.disabled = !canRetry;
+  elements.clearButton.disabled = !recentResult;
 }
 
 function renderErrorState(error) {
@@ -138,6 +149,7 @@ function renderErrorState(error) {
   elements.copyFinalButton.disabled = true;
   elements.copyRawButton.disabled = true;
   elements.retryButton.disabled = true;
+  elements.clearButton.disabled = true;
   showStatus(error.message || "Popup state could not be loaded.", "error");
 }
 

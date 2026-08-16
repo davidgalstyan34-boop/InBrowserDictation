@@ -216,20 +216,6 @@ function summarizeContentEditable(target, base) {
 }
 
 /**
- * Builds short overlay text for a captured target.
- */
-export function describeCapturedTarget(target) {
-  const kind = target?.kind ?? "none";
-  const descriptionActions = {
-    none: () => "No editable target captured",
-    blocked: () => target.reason
-  };
-
-  const action = descriptionActions[kind];
-  return action ? action() : `${kind} target captured`;
-}
-
-/**
  * Creates a compact, human-readable element descriptor for diagnostics/UI.
  */
 function describeElement(element) {

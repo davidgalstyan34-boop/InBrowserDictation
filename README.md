@@ -10,7 +10,7 @@ Current goal:
 Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> insert into the captured target or copy to clipboard.
 ```
 
-Phase 7 product differentiation is now included: custom reusable styles, latest-result recovery, popup controls, retry rewrite, and stronger contenteditable insertion. See [docs/architecture.md](docs/architecture.md).
+Also included: custom reusable styles, latest-result recovery, popup controls, retry rewrite, and stronger contenteditable insertion. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -67,7 +67,7 @@ If the captured target is gone, stale, or no editable target was focused, the ex
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
-The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings. While a session is mid-flight the popup also offers Cancel, which is the only way to abandon a session that the shortcut reports as busy.
+The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, clear the stored result, or open settings. While a session is mid-flight the popup also offers Cancel, which is the only way to abandon a session that the shortcut reports as busy.
 
 On first use, if you close the microphone permission window without choosing, the session ends cleanly and the next shortcut press starts a new one. If Chrome suspends the extension's service worker while that window is open, granting access still resumes the original session and inserts into the field you started from.
 

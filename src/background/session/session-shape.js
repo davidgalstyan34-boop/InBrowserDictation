@@ -23,7 +23,7 @@ export function createIdleSession() {
     improvement: null,
     outputText: null,
     insertion: null,
-    completedAt: null,
+    updatedAt: null,
     warning: null,
     error: null
   };

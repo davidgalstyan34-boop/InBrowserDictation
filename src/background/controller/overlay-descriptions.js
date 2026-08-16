@@ -3,9 +3,9 @@
  */
 export function describeRecordingState(session) {
   const targetDetail = describePreparedTarget(session.target);
-  return targetDetail === "No editable target captured"
-    ? "Microphone is active"
-    : `${targetDetail}; microphone is active`;
+  return targetDetail
+    ? `${targetDetail}; microphone is active`
+    : "Microphone is active";
 }
 
 /**
@@ -25,7 +25,7 @@ export function describeTranscriptionState(transcription) {
 }
 
 /**
- * Describes Phase 5 insertion readiness without exposing dictated content.
+ * Describes insertion readiness without exposing dictated content.
  */
 export function describeOutputTextState(outputText, warning = null) {
   const textLength = typeof outputText?.text === "string" ? outputText.text.length : 0;
@@ -62,17 +62,15 @@ export function describeInsertionState(insertion, warning = null) {
 }
 
 /**
- * Describes the captured target summary without exposing DOM references.
+ * Describes the captured target, or returns null when there is nothing to say.
+ *
+ * Returning null rather than a sentence keeps callers from having to compare
+ * against copy they do not own. A blocked target never reaches a recording
+ * session, because those fail before the recorder starts.
  */
 function describePreparedTarget(target) {
-  const kind = target?.kind ?? "none";
-  const descriptionActions = {
-    none: () => "No editable target captured",
-    blocked: () => target.reason
-  };
-
-  const action = descriptionActions[kind];
-  return action ? action() : `${kind} target captured`;
+  const kind = target?.kind;
+  return kind && kind !== "none" ? `${kind} target captured` : null;
 }
 
 function describeInsertionTarget(insertion) {

@@ -150,7 +150,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
   /**
    * Stores the transcript privately and advances into text improvement.
    */
-  function markTranscriptReady(sessionId, transcription, completedAt = Date.now()) {
+  function markTranscriptReady(sessionId, transcription, updatedAt = Date.now()) {
     if (!ownsSession(sessionId, "markTranscriptReady")) {
       return null;
     }
@@ -160,7 +160,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
       ...session,
       status,
       transcription,
-      completedAt
+      updatedAt
     };
     return session;
   }
@@ -168,7 +168,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
   /**
    * Stores improved text privately and advances into insertion.
    */
-  function markImprovedTextReady(sessionId, improvement, completedAt = Date.now()) {
+  function markImprovedTextReady(sessionId, improvement, updatedAt = Date.now()) {
     if (!ownsSession(sessionId, "markImprovedTextReady")) {
       return null;
     }
@@ -184,7 +184,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
         styleId: improvement?.styleId ?? null,
         providerMeta: improvement?.providerMeta ?? null
       }),
-      completedAt,
+      updatedAt,
       warning: null
     };
     return session;
@@ -193,7 +193,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
   /**
    * Advances insertion with the raw transcript when LLM improvement fails.
    */
-  function markRawTranscriptFallback(sessionId, error, completedAt = Date.now()) {
+  function markRawTranscriptFallback(sessionId, error, updatedAt = Date.now()) {
     if (!ownsSession(sessionId, "markRawTranscriptFallback")) {
       return null;
     }
@@ -209,7 +209,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
         styleId: "raw",
         providerMeta: session.transcription?.providerMeta ?? null
       }),
-      completedAt,
+      updatedAt,
       warning: {
         code: error?.code ?? "LLM_FAILED",
         message: error?.message ?? "Text improvement failed. The raw transcript is still available."
@@ -221,7 +221,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
   /**
    * Stores insertion metadata after content-side target insertion or fallback.
    */
-  function markInsertionDone(sessionId, insertion, completedAt = Date.now()) {
+  function markInsertionDone(sessionId, insertion, updatedAt = Date.now()) {
     if (!ownsSession(sessionId, "markInsertionDone")) {
       return null;
     }
@@ -231,7 +231,7 @@ export function createSessionStore({ onChange = () => {} } = {}) {
       ...session,
       status,
       insertion: createInsertionResult(insertion),
-      completedAt
+      updatedAt
     };
     return session;
   }
