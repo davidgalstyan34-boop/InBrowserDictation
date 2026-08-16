@@ -67,7 +67,7 @@ The toolbar popup is optional. It shows current status, selected style, Chrome's
 
 The current build sends microphone audio to the configured STT provider at `https://api.deepgram.com/*` and transcript text to the configured LLM provider at `https://generativelanguage.googleapis.com/*`.
 
-The default LLM model is `gemini-3.5-flash-lite`, which is available on the Gemini API free tier. Google documents that free-tier Gemini API content may be used to improve Google products; use a paid-tier project or a backend proxy if that is not acceptable for your data.
+The primary LLM model is `gemini-3.5-flash-lite`. If Google reports that model as unavailable for the current API key/project, the provider retries with `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite`, and `gemini-2.5-flash` before falling back to the raw transcript. The Generate Content API does not store requests by default, so the extension omits the optional request-level `store` field for REST compatibility. Google documents that free-tier Gemini API content may be used to improve Google products; use a paid-tier project or a backend proxy if that is not acceptable for your data.
 
 The latest successful result is kept temporarily in `chrome.storage.session` for popup recovery. Page overlays and generic runtime state snapshots still avoid exposing transcript text.
 

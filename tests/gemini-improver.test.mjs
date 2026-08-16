@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_GEMINI_MODEL,
+  FALLBACK_GEMINI_MODELS,
   extractGeminiOutputText,
   improveTextWithGemini
 } from "../src/background/providers/gemini-improver.js";
@@ -68,9 +69,9 @@ describe("Gemini text improver", () => {
     );
     assert.equal(request.options.method, "POST");
     assert.equal(request.options.headers["x-goog-api-key"], "gemini-key");
-    assert.equal(request.body.store, false);
-    assert.match(request.body.systemInstruction.parts[0].text, /Return only the transformed text/);
-    assert.equal(request.body.contents[0].role, "user");
+    assert.equal("store" in request.body, false);
+    assert.match(request.body.system_instruction.parts[0].text, /Return only the transformed text/);
+    assert.equal("role" in request.body.contents[0], false);
     assert.match(request.body.contents[0].parts[0].text, /hello world/);
     assert.deepEqual(result, {
       text: "Hello world.",
@@ -138,6 +139,164 @@ describe("Gemini text improver", () => {
       }),
       { code: "LLM_EMPTY_TEXT" }
     );
+
+    await assert.rejects(
+      improveTextWithGemini({
+        text: "hello",
+        style,
+        settings: { llmApiKey: "bad-key" },
+        fetchApi: async () => new Response(JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "API key not valid. Please pass a valid API key."
+          }
+        }), { status: 400 })
+      }),
+      { code: "LLM_AUTH_FAILED" }
+    );
+  });
+
+  it("retries with alternate request shapes when Gemini rejects a REST field name", async () => {
+    const requests = [];
+    const fetchApi = async (url, options) => {
+      requests.push({
+        url,
+        body: JSON.parse(options.body)
+      });
+
+      if (requests.length === 1) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "Invalid JSON payload received. Unknown name \"system_instruction\": Cannot find field."
+          }
+        }), { status: 400 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "Shape-compatible result." }
+              ]
+            },
+            finishReason: "STOP"
+          }
+        ]
+      }), { status: 200 });
+    };
+
+    const result = await improveTextWithGemini({
+      text: "shape compatible result",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi
+    });
+
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].url, requests[1].url);
+    assert.match(requests[0].body.system_instruction.parts[0].text, /Return only the transformed text/);
+    assert.equal("systemInstruction" in requests[0].body, false);
+    assert.equal("store" in requests[1].body, false);
+    assert.match(requests[1].body.systemInstruction.parts[0].text, /Return only the transformed text/);
+    assert.equal("system_instruction" in requests[1].body, false);
+    assert.equal(result.text, "Shape-compatible result.");
+    assert.equal(result.providerMeta.model, DEFAULT_GEMINI_MODEL);
+  });
+
+  it("falls back to inline instructions when Gemini rejects dedicated system instruction fields", async () => {
+    const requests = [];
+    const fetchApi = async (url, options) => {
+      requests.push(JSON.parse(options.body));
+
+      if (requests.length < 3) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 400,
+            status: "INVALID_ARGUMENT",
+            message: "Developer instruction is not enabled for this request."
+          }
+        }), { status: 400 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "Inline-compatible result." }
+              ]
+            },
+            finishReason: "STOP"
+          }
+        ]
+      }), { status: 200 });
+    };
+
+    const result = await improveTextWithGemini({
+      text: "inline compatible result",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi
+    });
+
+    assert.equal(requests.length, 3);
+    assert.equal("system_instruction" in requests[2], false);
+    assert.equal("systemInstruction" in requests[2], false);
+    assert.match(requests[2].contents[0].parts[0].text, /Return only the transformed text/);
+    assert.match(requests[2].contents[0].parts[0].text, /inline compatible result/);
+    assert.equal(result.text, "Inline-compatible result.");
+  });
+
+  it("falls back to a stable Gemini model when the primary model is unavailable", async () => {
+    const urls = [];
+    const fetchApi = async (url) => {
+      urls.push(url);
+
+      if (urls.length === 1) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 404,
+            status: "NOT_FOUND",
+            message: `models/${DEFAULT_GEMINI_MODEL} is not found for API version v1beta.`
+          }
+        }), { status: 404 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                { text: "Fallback model result." }
+              ]
+            },
+            finishReason: "STOP"
+          }
+        ]
+      }), { status: 200 });
+    };
+
+    const result = await improveTextWithGemini({
+      text: "fallback model result",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi
+    });
+
+    assert.equal(
+      urls[0],
+      `https://generativelanguage.googleapis.com/v1beta/models/${DEFAULT_GEMINI_MODEL}:generateContent`
+    );
+    assert.equal(
+      urls[1],
+      `https://generativelanguage.googleapis.com/v1beta/models/${FALLBACK_GEMINI_MODELS[0]}:generateContent`
+    );
+    assert.equal(result.text, "Fallback model result.");
+    assert.equal(result.providerMeta.model, FALLBACK_GEMINI_MODELS[0]);
   });
 
   it("bypasses provider calls when the Raw style is selected", async () => {

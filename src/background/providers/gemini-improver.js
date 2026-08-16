@@ -7,6 +7,17 @@ import { createRequestSignal } from "./request-signal.js";
 
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 export const DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite";
+export const FALLBACK_GEMINI_MODELS = Object.freeze([
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash"
+]);
+const GEMINI_REQUEST_SHAPES = Object.freeze([
+  "snake-case-system-instruction",
+  "camel-case-system-instruction",
+  "inline-instructions"
+]);
 const DEFAULT_LLM_TIMEOUT_MS = 45_000;
 
 /**
@@ -46,40 +57,15 @@ export async function improveTextWithGemini({
   }
 
   const prompt = buildTextImprovementPrompt({ text, style });
-  const model = DEFAULT_GEMINI_MODEL;
   const requestSignal = createRequestSignal({ parentSignal: signal, timeoutMs });
 
   try {
-    const response = await fetchApi(createGeminiGenerateContentUrl(model), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey
-      },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [
-            { text: prompt.instructions }
-          ]
-        },
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: prompt.userText }
-            ]
-          }
-        ],
-        store: false
-      }),
+    const { payload, model: usedModel } = await generateTextWithGemini({
+      apiKey,
+      fetchApi,
+      prompt,
       signal: requestSignal.signal
     });
-
-    if (!response.ok) {
-      throw createGeminiHttpError(response);
-    }
-
-    const payload = await readJsonResponse(response);
     const improvedText = extractGeminiOutputText(payload);
     if (!improvedText) {
       throw createGeminiEmptyTextError(payload);
@@ -88,7 +74,7 @@ export async function improveTextWithGemini({
     return {
       text: improvedText,
       styleId: style?.id ?? "default",
-      providerMeta: createGeminiProviderMeta(payload, model)
+      providerMeta: createGeminiProviderMeta(payload, usedModel)
     };
   } catch (error) {
     throw normalizeTextImprovementError(error, {
@@ -97,6 +83,145 @@ export async function improveTextWithGemini({
   } finally {
     requestSignal.cleanup();
   }
+}
+
+async function generateTextWithGemini({ apiKey, fetchApi, prompt, signal }) {
+  const models = [DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS];
+  let lastModelError = null;
+
+  for (const model of models) {
+    try {
+      return await requestGeminiContentWithCompatibleShape({
+        apiKey,
+        fetchApi,
+        model,
+        prompt,
+        signal
+      });
+    } catch (error) {
+      if (error.retryWithFallbackModel && model !== models[models.length - 1]) {
+        lastModelError = error;
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastModelError ?? createTextImprovementError(
+    "LLM_MODEL_UNAVAILABLE",
+    "No compatible Gemini model is available. The raw transcript is still available."
+  );
+}
+
+async function requestGeminiContentWithCompatibleShape({
+  apiKey,
+  fetchApi,
+  model,
+  prompt,
+  signal
+}) {
+  let lastShapeError = null;
+  const lastRequestShape = GEMINI_REQUEST_SHAPES[GEMINI_REQUEST_SHAPES.length - 1];
+
+  for (const requestShape of GEMINI_REQUEST_SHAPES) {
+    try {
+      return await requestGeminiContent({
+        apiKey,
+        fetchApi,
+        model,
+        prompt,
+        requestShape,
+        signal
+      });
+    } catch (error) {
+      if (error.retryWithFallbackModel) {
+        throw error;
+      }
+
+      if (error.retryWithAlternateRequestShape && requestShape !== lastRequestShape) {
+        lastShapeError = error;
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw lastShapeError ?? createTextImprovementError(
+    "LLM_PROVIDER_FAILED",
+    "Gemini text improvement failed. The raw transcript is still available."
+  );
+}
+
+async function requestGeminiContent({
+  apiKey,
+  fetchApi,
+  model,
+  prompt,
+  requestShape,
+  signal
+}) {
+  const response = await fetchApi(createGeminiGenerateContentUrl(model), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify(createGeminiRequestBody(prompt, { requestShape })),
+    signal
+  });
+
+  if (!response.ok) {
+    const error = await createGeminiHttpError(response);
+    error.providerModel = model;
+    error.requestShape = requestShape;
+    throw error;
+  }
+
+  return {
+    model,
+    payload: await readJsonResponse(response)
+  };
+}
+
+function createGeminiRequestBody(prompt, { requestShape }) {
+  if (requestShape === "inline-instructions") {
+    return {
+      contents: [
+        {
+          parts: [
+            { text: `${prompt.instructions}\n\n${prompt.userText}` }
+          ]
+        }
+      ]
+    };
+  }
+
+  const systemInstruction = {
+    parts: [
+      { text: prompt.instructions }
+    ]
+  };
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: prompt.userText }
+        ]
+      }
+    ]
+  };
+
+  if (requestShape === "snake-case-system-instruction") {
+    body.system_instruction = systemInstruction;
+    return body;
+  }
+
+  return {
+    ...body,
+    systemInstruction
+  };
 }
 
 /**
@@ -117,25 +242,22 @@ export function extractGeminiOutputText(payload) {
     .join("\n");
 }
 
-function createGeminiHttpError(response) {
-  const statusMessages = {
-    400: ["LLM_PROVIDER_REJECTED_TEXT", "Gemini could not improve this transcript."],
-    401: ["LLM_AUTH_FAILED", "Gemini rejected the API key."],
-    403: ["LLM_AUTH_FAILED", "Gemini rejected the API key."],
-    429: ["LLM_RATE_LIMITED", "Gemini rate limit reached. The raw transcript is still available."]
-  };
+async function createGeminiHttpError(response) {
+  const providerError = await readGeminiError(response);
+  const [code, message] = classifyGeminiHttpError(response, providerError);
 
-  const [code, message] = statusMessages[response.status] ?? (
-    response.status >= 500
-      ? ["LLM_PROVIDER_UNAVAILABLE", "Gemini is temporarily unavailable. The raw transcript is still available."]
-      : ["LLM_PROVIDER_FAILED", "Gemini text improvement failed. The raw transcript is still available."]
-  );
-
-  return createTextImprovementError(code, message);
+  const error = createTextImprovementError(code, message);
+  error.providerStatus = response.status;
+  error.providerErrorCode = providerError.code;
+  error.providerErrorStatus = providerError.status;
+  error.retryWithAlternateRequestShape = shouldRetryWithAlternateRequestShape(response, providerError);
+  error.retryWithFallbackModel = shouldRetryWithFallbackModel(response, providerError);
+  return error;
 }
 
 function createGeminiEmptyTextError(payload) {
-  const blockReason = payload?.promptFeedback?.blockReason;
+  const blockReason = payload?.promptFeedback?.blockReason
+    ?? payload?.prompt_feedback?.block_reason;
   if (blockReason) {
     return createTextImprovementError(
       "LLM_PROVIDER_REJECTED_TEXT",
@@ -143,7 +265,8 @@ function createGeminiEmptyTextError(payload) {
     );
   }
 
-  const finishReason = payload?.candidates?.[0]?.finishReason;
+  const finishReason = payload?.candidates?.[0]?.finishReason
+    ?? payload?.candidates?.[0]?.finish_reason;
   if (finishReason && finishReason !== "STOP") {
     return createTextImprovementError(
       "LLM_PROVIDER_FAILED",
@@ -169,17 +292,105 @@ async function readJsonResponse(response) {
   }
 }
 
+async function readGeminiError(response) {
+  const fallback = {
+    code: "",
+    message: "",
+    status: ""
+  };
+
+  try {
+    const text = await response.text();
+    if (!text) {
+      return fallback;
+    }
+
+    try {
+      return normalizeGeminiErrorPayload(JSON.parse(text), text);
+    } catch {
+      return {
+        ...fallback,
+        message: text
+      };
+    }
+  } catch {
+    return fallback;
+  }
+}
+
+function normalizeGeminiErrorPayload(payload, fallbackMessage = "") {
+  const error = payload?.error;
+  return {
+    code: typeof error?.code === "number" ? String(error.code) : "",
+    message: typeof error?.message === "string" ? error.message : fallbackMessage,
+    status: typeof error?.status === "string" ? error.status : ""
+  };
+}
+
 function createGeminiProviderMeta(payload, requestedModel) {
   return {
     provider: "gemini",
     model: payload?.modelVersion ?? requestedModel,
     responseId: payload?.responseId ?? null,
-    finishReason: payload?.candidates?.[0]?.finishReason ?? null
+    finishReason: payload?.candidates?.[0]?.finishReason
+      ?? payload?.candidates?.[0]?.finish_reason
+      ?? null
   };
 }
 
 function createGeminiGenerateContentUrl(model) {
   return `${GEMINI_API_BASE_URL}/${encodeURIComponent(model)}:generateContent`;
+}
+
+function classifyGeminiHttpError(response, providerError) {
+  if (isGeminiAuthFailure(response, providerError)) {
+    return ["LLM_AUTH_FAILED", "Gemini rejected the API key."];
+  }
+
+  if (isGeminiRateLimit(response, providerError)) {
+    return ["LLM_RATE_LIMITED", "Gemini rate limit reached. The raw transcript is still available."];
+  }
+
+  if (shouldRetryWithFallbackModel(response, providerError)) {
+    return ["LLM_MODEL_UNAVAILABLE", "Gemini model is unavailable. The raw transcript is still available."];
+  }
+
+  if (response.status === 400) {
+    return ["LLM_PROVIDER_REJECTED_TEXT", "Gemini could not improve this transcript."];
+  }
+
+  if (response.status >= 500) {
+    return ["LLM_PROVIDER_UNAVAILABLE", "Gemini is temporarily unavailable. The raw transcript is still available."];
+  }
+
+  return ["LLM_PROVIDER_FAILED", "Gemini text improvement failed. The raw transcript is still available."];
+}
+
+function shouldRetryWithAlternateRequestShape(response, providerError) {
+  return response.status === 400
+    && /unknown name|unrecognized field|invalid json payload|cannot find field|system[_ ]?instruction|developer instruction/i.test(providerError.message);
+}
+
+function shouldRetryWithFallbackModel(response, providerError) {
+  return response.status === 404
+    || (
+      response.status === 400
+        && /model/i.test(providerError.message)
+        && /not found|not supported|not available|unsupported/i.test(providerError.message)
+    );
+}
+
+function isGeminiAuthFailure(response, providerError) {
+  return response.status === 401
+    || response.status === 403
+    || providerError.status === "UNAUTHENTICATED"
+    || /api key|authentication|permission denied/i.test(providerError.message);
+}
+
+function isGeminiRateLimit(response, providerError) {
+  return response.status === 429
+    || providerError.status === "RESOURCE_EXHAUSTED"
+    || /rate limit|quota/i.test(providerError.message);
 }
 
 function isUsableText(text) {

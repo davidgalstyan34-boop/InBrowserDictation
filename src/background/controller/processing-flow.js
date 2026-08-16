@@ -84,7 +84,12 @@ export function createProcessingFlow({
       console.warn("[In-Browser Dictation] Text improvement failed; using raw transcript.", {
         sessionId: session.id,
         code: error.code || "LLM_FAILED",
-        message: error.message
+        message: error.message,
+        providerStatus: error.providerStatus,
+        providerErrorStatus: error.providerErrorStatus,
+        providerErrorCode: error.providerErrorCode,
+        providerModel: error.providerModel,
+        requestShape: error.requestShape
       });
 
       insertingSession = sessions.markRawTranscriptFallback(error);

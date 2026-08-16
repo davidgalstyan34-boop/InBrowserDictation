@@ -244,8 +244,13 @@ Current request shape:
 
 - `POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent`;
 - `x-goog-api-key` header, rather than a query-string key;
-- code-owned `systemInstruction` plus transcript `contents`;
-- `store: false`.
+- code-owned system-instruction content plus transcript `contents`;
+- omits the optional `store` field because Generate Content does not store requests by default, and older REST surfaces may reject that field.
+
+Compatibility handling:
+
+- sends a REST-minimal body first, then retries alternate system-instruction field shapes only if the provider rejects the request shape;
+- falls back from `gemini-3.5-flash-lite` to `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite`, and `gemini-2.5-flash` only when the provider reports model unavailability.
 
 Prompt rules:
 
