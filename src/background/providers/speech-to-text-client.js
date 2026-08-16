@@ -8,6 +8,18 @@ import {
   transcribeWithDeepgram
 } from "./deepgram-transcriber.js";
 
+// Maps the stored `sttProvider` setting to an implementation.
+//
+// Adding a provider means adding an entry here *and* to SUPPORTED_STT_PROVIDERS
+// in settings.js. The settings normalizer clamps unknown values to the default,
+// so the guard below only fires if those two lists drift apart in a build; a
+// test asserts they agree, which is the real protection.
+const TRANSCRIBERS = Object.freeze({
+  deepgram: transcribeWithDeepgram
+});
+
+export const IMPLEMENTED_STT_PROVIDERS = Object.freeze(Object.keys(TRANSCRIBERS));
+
 /**
  * Background speech-to-text facade.
  *
@@ -28,11 +40,19 @@ export function createSpeechToTextClient({
    */
   async function transcribe({ audio, signal = null } = {}) {
     const settings = await loadSpeechToTextSettings(storageArea);
+    const transcribeWithProvider = TRANSCRIBERS[settings.sttProvider];
+
+    if (!transcribeWithProvider) {
+      throw createSpeechToTextError(
+        "STT_PROVIDER_UNSUPPORTED",
+        `Speech-to-text provider "${settings.sttProvider}" is not available in this build.`
+      );
+    }
 
     try {
       const audioBlob = audioPayloadToBlob(audio);
 
-      return await transcribeWithDeepgram({
+      return await transcribeWithProvider({
         audioBlob,
         mimeType: audio?.mimeType ?? audioBlob.type,
         settings,

@@ -57,6 +57,10 @@ The default command is `Ctrl+Shift+Space` on Windows/Linux and `Command+Shift+Sp
 
 Pressing the shortcut on a normal webpage displays a small overlay, captures the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, sends the transcript to Gemini for the selected rewrite style, and inserts the final text into the originally captured target. Chrome prompts for microphone permission the first time recording starts.
 
+Editors inside iframes (mail compose windows, many embedded rich editors) and inside web components are supported: the frame holding the focused element captures and receives the text, while the status overlay stays in the top-level page.
+
+Recording stops automatically after five minutes and transcribes what it captured, so a forgotten session cannot hold the microphone open indefinitely.
+
 Password and hidden fields are never dictation targets. Focusing one and pressing the shortcut fails immediately without recording, so no audio is sent to a provider and no text reaches the clipboard.
 
 If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If both insertion and the clipboard fail, the text is still recoverable from the popup, and the page overlay says so. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
@@ -89,6 +93,8 @@ Permissions used today:
 - Requires a saved Deepgram API key before transcription can complete.
 - Requires a saved Gemini API key for non-Raw text improvement styles.
 - Rich editor support now tries the browser editor `insertText` command before range insertion, but complex editors may still fall back to clipboard.
+- Editors behind a closed shadow root cannot be reached; focus resolution stops at the shadow host.
+- Recording is capped at five minutes per session.
 - Popup retry reruns Gemini text improvement from the stored raw transcript; it does not perform a full audio/STT retry.
 - Content scripts cannot run on restricted Chrome pages such as `chrome://extensions`.
 

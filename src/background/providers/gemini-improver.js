@@ -13,7 +13,7 @@ export const FALLBACK_GEMINI_MODELS = Object.freeze([
   "gemini-2.5-flash-lite",
   "gemini-2.5-flash"
 ]);
-const GEMINI_REQUEST_SHAPES = Object.freeze([
+export const GEMINI_REQUEST_SHAPES = Object.freeze([
   "snake-case-system-instruction",
   "camel-case-system-instruction",
   "inline-instructions"
@@ -32,7 +32,8 @@ export async function improveTextWithGemini({
   settings,
   fetchApi = globalThis.fetch,
   signal = null,
-  timeoutMs = DEFAULT_LLM_TIMEOUT_MS
+  timeoutMs = DEFAULT_LLM_TIMEOUT_MS,
+  compatibility = null
 }) {
   const apiKey = settings?.llmApiKey?.trim();
   if (!apiKey) {
@@ -64,7 +65,8 @@ export async function improveTextWithGemini({
       apiKey,
       fetchApi,
       prompt,
-      signal: requestSignal.signal
+      signal: requestSignal.signal,
+      compatibility
     });
     const improvedText = extractGeminiOutputText(payload);
     if (!improvedText) {
@@ -85,19 +87,24 @@ export async function improveTextWithGemini({
   }
 }
 
-async function generateTextWithGemini({ apiKey, fetchApi, prompt, signal }) {
-  const models = [DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS];
+async function generateTextWithGemini({ apiKey, fetchApi, prompt, signal, compatibility }) {
+  const remembered = await loadRememberedPair(compatibility);
+  const models = orderModelsByCompatibility(remembered);
   let lastModelError = null;
 
   for (const model of models) {
     try {
-      return await requestGeminiContentWithCompatibleShape({
+      const result = await requestGeminiContentWithCompatibleShape({
         apiKey,
         fetchApi,
         model,
         prompt,
-        signal
+        signal,
+        requestShapes: orderRequestShapesByCompatibility(model, remembered)
       });
+
+      await rememberWorkingPair(compatibility, result);
+      return result;
     } catch (error) {
       if (error.retryWithFallbackModel && model !== models[models.length - 1]) {
         lastModelError = error;
@@ -114,17 +121,57 @@ async function generateTextWithGemini({ apiKey, fetchApi, prompt, signal }) {
   );
 }
 
+/**
+ * Tries the combination that last worked before falling back to the ladder.
+ */
+function orderModelsByCompatibility(remembered) {
+  const models = [DEFAULT_GEMINI_MODEL, ...FALLBACK_GEMINI_MODELS];
+  if (!remembered || !models.includes(remembered.model)) {
+    return models;
+  }
+
+  return [remembered.model, ...models.filter((model) => model !== remembered.model)];
+}
+
+function orderRequestShapesByCompatibility(model, remembered) {
+  if (remembered?.model !== model || !GEMINI_REQUEST_SHAPES.includes(remembered.requestShape)) {
+    return GEMINI_REQUEST_SHAPES;
+  }
+
+  return [
+    remembered.requestShape,
+    ...GEMINI_REQUEST_SHAPES.filter((shape) => shape !== remembered.requestShape)
+  ];
+}
+
+async function loadRememberedPair(compatibility) {
+  try {
+    return await compatibility?.load?.() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function rememberWorkingPair(compatibility, { model, requestShape }) {
+  try {
+    await compatibility?.save?.({ model, requestShape });
+  } catch {
+    // Remembering is an optimization; failing to store it costs one probe.
+  }
+}
+
 async function requestGeminiContentWithCompatibleShape({
   apiKey,
   fetchApi,
   model,
   prompt,
-  signal
+  signal,
+  requestShapes = GEMINI_REQUEST_SHAPES
 }) {
   let lastShapeError = null;
-  const lastRequestShape = GEMINI_REQUEST_SHAPES[GEMINI_REQUEST_SHAPES.length - 1];
+  const lastRequestShape = requestShapes[requestShapes.length - 1];
 
-  for (const requestShape of GEMINI_REQUEST_SHAPES) {
+  for (const requestShape of requestShapes) {
     try {
       return await requestGeminiContent({
         apiKey,
@@ -181,6 +228,7 @@ async function requestGeminiContent({
 
   return {
     model,
+    requestShape,
     payload: await readJsonResponse(response)
   };
 }

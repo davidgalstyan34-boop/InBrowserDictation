@@ -1,4 +1,4 @@
-import { describeAudioMetadata } from "../../shared/audio-recording.js";
+import { MAX_RECORDING_MS, describeAudioMetadata } from "../../shared/audio-recording.js";
 import {
   describeInsertionState,
   describeOutputTextState,
@@ -43,6 +43,18 @@ export async function showRecordingState(content, session) {
     status: session.status,
     title: "Listening",
     detail: describeRecordingState(session)
+  });
+}
+
+/**
+ * Explains that recording ended on its own at the maximum length.
+ */
+export async function showRecordingLimitReachedState(content, session) {
+  await content.safeShowState(session.tabId, session.id, {
+    status: session.status,
+    title: "Recording limit reached",
+    detail: `Stopped after ${formatDurationLimit(MAX_RECORDING_MS)}; transcribing what was captured`,
+    tone: "warning"
   });
 }
 
@@ -126,6 +138,11 @@ export async function showMicrophoneAccessGrantedState(content, session) {
     title: "Microphone access granted",
     detail: "Starting recording"
   });
+}
+
+function formatDurationLimit(durationMs) {
+  const minutes = Math.round(durationMs / 60_000);
+  return minutes === 1 ? "1 minute" : `${minutes} minutes`;
 }
 
 /**

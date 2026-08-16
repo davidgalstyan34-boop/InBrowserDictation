@@ -13,7 +13,7 @@ This keeps the first implementation window focused on browser behavior instead o
 
 - Manifest V3.
 - `background.service_worker`: owns session state and command handling.
-- `content_scripts`: loaded on normal pages to capture targets and show overlay feedback.
+- `content_scripts`: loaded in every frame of normal pages to capture targets and show overlay feedback.
 - `options_page`: stores provider keys and selected style.
 - `commands`: `toggle-dictation`, defaulting to `Ctrl+Shift+Space` or `Command+Shift+Space`.
 - Current permissions: `storage`, `offscreen`, `activeTab`, `scripting`, `clipboardWrite`.
@@ -90,6 +90,7 @@ The recorder should:
 - use `MediaRecorder`;
 - choose a provider-compatible MIME type such as `audio/webm`;
 - stop all media tracks after recording;
+- stop at a maximum recording length, keeping the audio captured so far and telling the service worker to continue the pipeline;
 - reject empty or tiny recordings before STT;
 - report normalized microphone and recorder errors;
 - return a JSON-safe audio payload because Chrome extension messaging should not depend on passing `Blob` objects directly.
@@ -121,6 +122,7 @@ Important message families:
 - `runtime.cancelDictation`: popup entrypoint that abandons a session stuck in a non-toggleable state.
 - `runtime.retryRecentImprovement`: rerun LLM improvement from the stored latest raw transcript.
 - `offscreen.getRecordingState`: recover an active recorder after service-worker suspension.
+- `offscreen.recordingDurationCapped`: the recorder stopped itself at the maximum recording length and is holding the audio.
 - `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
 - `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
 
@@ -191,6 +193,14 @@ No state is left waiting indefinitely:
 ## 7. Target Capture and Insertion Design
 
 Capture happens in the content script immediately after the start command reaches the active tab.
+
+The content script runs in every frame, because many editors (mail compose windows, embedded rich editors) live in an iframe where the top document's active element is only the frame itself. That makes message routing explicit, since `tabs.sendMessage` delivers a broadcast to every frame but surfaces only one arbitrary response:
+
+- Overlay updates target the top frame. An overlay drawn inside a small, scrolled, or hidden iframe would be clipped or invisible.
+- Dismissals broadcast, because the overlay and the captured target can live in different frames and each has to be released.
+- Capture and insertion need a response, so exactly one frame answers. A frame claims the session only when the focused element is in it: focus is unique across a frame tree, and ancestors are excluded because their active element is the frame holding focus. When nothing in the tab has focus, the top frame claims, which keeps a page with no editable target behaving as before. If no frame claims, the top frame is asked again with `requireClaim`, so the clipboard fallback still has an owner.
+
+Focus is resolved through open shadow roots, since `document.activeElement` stops at the shadow host and would otherwise report a web-component wrapper instead of the editor inside it.
 
 A target the content script rejects on purpose (`kind: "blocked"`) fails the session before recording starts, so no audio is captured and nothing reaches a provider or the clipboard. That is distinct from "nothing editable was focused" (`kind: "none"`), which still records and falls back to the clipboard.
 
@@ -263,7 +273,10 @@ Current request shape:
 Compatibility handling:
 
 - sends a REST-minimal body first, then retries alternate system-instruction field shapes only if the provider rejects the request shape;
-- falls back from `gemini-3.5-flash-lite` to `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite`, and `gemini-2.5-flash` only when the provider reports model unavailability.
+- falls back from `gemini-3.5-flash-lite` to `gemini-3.5-flash`, `gemini-3.1-flash-lite`, `gemini-2.5-flash-lite`, and `gemini-2.5-flash` only when the provider reports model unavailability;
+- remembers the model and request shape that worked in `chrome.storage.session` and tries that combination first. Without this, an account whose primary model is unavailable re-walks the whole ladder on every dictation, paying failed round-trips inside the same timeout budget as the request that matters. The memory is session-scoped because model availability can change under the account, and a remembered pair this build no longer offers is discarded.
+
+Provider selection is a real lookup: the STT and LLM facades dispatch on the stored `sttProvider` and `llmProvider` settings through a registry. A test asserts those registries match the provider lists the options page validates against, so the two cannot drift into a state where a user selects one provider and another one runs.
 
 Prompt rules:
 

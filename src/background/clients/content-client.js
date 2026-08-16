@@ -1,6 +1,7 @@
 import { MessageType, createEnvelope } from "../../shared/messages.js";
 
 const CONTENT_SCRIPT_FILE = "content/content-script.js";
+const TOP_FRAME_ID = 0;
 
 /**
  * Small adapter around tab/content-script messaging.
@@ -9,6 +10,13 @@ const CONTENT_SCRIPT_FILE = "content/content-script.js";
  * keeps Chrome's message-envelope ceremony in one place. It also owns the
  * "receiving end does not exist" recovery path by injecting the content script
  * on demand and retrying the message once.
+ *
+ * The content script runs in every frame, so each message family states where
+ * it belongs. Overlay updates go to the top frame, because an overlay drawn
+ * inside a small or hidden iframe would be unreachable. Dismissals broadcast,
+ * because every frame may be holding captured state to release. Messages whose
+ * response the service worker needs are answered by the single frame that
+ * claimed the session; see the frame-claim protocol in `content-script.js`.
  */
 export function createContentClient({ chromeApi }) {
   return {
@@ -29,29 +37,48 @@ export function createContentClient({ chromeApi }) {
   }
 
   /**
-   * Asks the content script to capture the editable target for this session.
+   * Asks the frame holding the editable target to capture it for this session.
+   *
+   * The first pass is a broadcast that only the focused frame answers. When no
+   * frame volunteers, the top frame is asked to claim the session anyway, so
+   * that a page with nothing editable focused still gets an owner for the
+   * later insertion and clipboard fallback.
    */
   async function prepareDictation(tabId, sessionId) {
-    return await sendTabMessageWithContentScript(tabId, createEnvelope(
+    const broadcast = createEnvelope(
       MessageType.CONTENT_PREPARE_DICTATION,
       { source: "keyboard-command" },
       sessionId
-    ));
+    );
+
+    try {
+      return await sendTabMessageWithContentScript(tabId, broadcast);
+    } catch (error) {
+      if (!isUnclaimedMessage(error)) {
+        throw error;
+      }
+    }
+
+    return await sendTabMessageWithContentScript(tabId, createEnvelope(
+      MessageType.CONTENT_PREPARE_DICTATION,
+      { source: "keyboard-command", requireClaim: true },
+      sessionId
+    ), { frameId: TOP_FRAME_ID });
   }
 
   /**
-   * Sends overlay state to the content script and lets failures bubble up.
+   * Sends overlay state to the top frame and lets failures bubble up.
    */
   async function showState(tabId, sessionId, state) {
     return await sendTabMessageWithContentScript(tabId, createEnvelope(
       MessageType.CONTENT_SHOW_STATE,
       state,
       sessionId
-    ));
+    ), { frameId: TOP_FRAME_ID });
   }
 
   /**
-   * Asks the content script to remove any visible overlay for this session.
+   * Asks every frame to drop overlay and captured state for this session.
    */
   async function dismissOverlay(tabId, sessionId) {
     return await sendTabMessageWithContentScript(tabId, createEnvelope(
@@ -62,7 +89,7 @@ export function createContentClient({ chromeApi }) {
   }
 
   /**
-   * Sends private output text to the content script for target insertion.
+   * Sends private output text to the frame that captured this session's target.
    */
   async function insertText(tabId, sessionId, text) {
     return await sendTabMessageWithContentScript(tabId, createEnvelope(
@@ -113,8 +140,10 @@ export function createContentClient({ chromeApi }) {
     }
   }
 
-  async function sendTabMessage(tabId, message) {
-    return await chromeApi.tabs.sendMessage(tabId, message);
+  async function sendTabMessage(tabId, message, options) {
+    return options
+      ? await chromeApi.tabs.sendMessage(tabId, message, options)
+      : await chromeApi.tabs.sendMessage(tabId, message);
   }
 
   /**
@@ -125,16 +154,16 @@ export function createContentClient({ chromeApi }) {
    * extension development, already-open tabs often predate the latest reload,
    * so a valid normal webpage can still have no receiving end.
    */
-  async function sendTabMessageWithContentScript(tabId, message) {
+  async function sendTabMessageWithContentScript(tabId, message, options) {
     try {
-      return await sendTabMessage(tabId, message);
+      return await sendTabMessage(tabId, message, options);
     } catch (error) {
       if (!isMissingMessageReceiver(error)) {
         throw error;
       }
 
       await injectContentScript(tabId);
-      return await sendTabMessage(tabId, message);
+      return await sendTabMessage(tabId, message, options);
     }
   }
 
@@ -165,5 +194,16 @@ export function createContentClient({ chromeApi }) {
    */
   function isMissingMessageReceiver(error) {
     return error?.message?.includes("Receiving end does not exist");
+  }
+
+  /**
+   * Detects a broadcast that every frame declined to answer.
+   *
+   * Chrome reports this as a closed port, which is distinct from having no
+   * receiver at all: content scripts are present, they just did not claim the
+   * session.
+   */
+  function isUnclaimedMessage(error) {
+    return error?.message?.includes("message port closed");
   }
 }

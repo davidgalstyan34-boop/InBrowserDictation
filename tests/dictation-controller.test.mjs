@@ -991,6 +991,136 @@ describe("dictation controller", () => {
     });
   });
 
+  it("transcribes a recording that stopped at the duration cap", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+
+      globalThis.fetch = async (url) => {
+        if (String(url).startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse("capped transcript");
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: { sttApiKey: "deepgram-key", defaultStyleId: "raw" },
+          tabMessages,
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: { randomUUID: () => "session-capped" }
+        });
+
+        await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+        assert.equal(getPublicSession(controller).status, DictationStatus.RECORDING);
+
+        // The offscreen recorder reports that it stopped itself; the user never
+        // pressed stop, so the pipeline has to continue on its own.
+        const response = await sendOffscreenMessage(
+          controller,
+          MessageType.OFFSCREEN_RECORDING_DURATION_CAPPED,
+          "session-capped"
+        );
+
+        assert.equal(response.ok, true);
+        assert.equal(getPublicSession(controller).status, DictationStatus.SUCCESS);
+        assert.equal(
+          runtimeMessages.some((message) => (
+            message.type === MessageType.OFFSCREEN_STOP_RECORDING
+          )),
+          true
+        );
+
+        const limitNotice = tabMessages
+          .map(({ message }) => message)
+          .filter((message) => message.type === MessageType.CONTENT_SHOW_STATE)
+          .find((message) => message.payload.title === "Recording limit reached");
+        assert.ok(limitNotice, "the page is told why recording ended");
+        assert.equal(limitNotice.payload.tone, "warning");
+
+        const popupState = await sendRuntimeMessage(controller, MessageType.RUNTIME_GET_POPUP_STATE);
+        assert.equal(popupState.recentResult.finalText, "capped transcript");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  it("collects capped audio after the worker was restarted by the report", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const runtimeMessages = [];
+
+      globalThis.fetch = async (url) => {
+        if (String(url).startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse("recovered capped transcript");
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: { sttApiKey: "deepgram-key", defaultStyleId: "raw" },
+          tabMessages: [],
+          // The offscreen document is still alive and holding the capped audio.
+          contexts: [{ url: "chrome-extension://test/offscreen/recorder.html" }],
+          runtimeSendMessage: async (message) => {
+            runtimeMessages.push(message);
+
+            if (message.type === MessageType.OFFSCREEN_GET_RECORDING_STATE) {
+              return {
+                ok: true,
+                recording: {
+                  sessionId: "session-capped-before-restart",
+                  tabId: 7,
+                  startedAt: 1000,
+                  mimeType: "audio/webm",
+                  durationCapped: true
+                }
+              };
+            }
+
+            if (message.type === MessageType.OFFSCREEN_STOP_RECORDING) {
+              return { ok: true, audio: createTestAudioPayload() };
+            }
+
+            return { ok: true };
+          }
+        });
+        // A fresh controller stands in for a worker restarted by the report.
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: { randomUUID: () => "unused" }
+        });
+
+        assert.equal(getPublicSession(controller).status, DictationStatus.IDLE);
+
+        await sendOffscreenMessage(
+          controller,
+          MessageType.OFFSCREEN_RECORDING_DURATION_CAPPED,
+          "session-capped-before-restart"
+        );
+
+        const session = getPublicSession(controller);
+        assert.equal(session.status, DictationStatus.SUCCESS);
+        assert.equal(session.id, "session-capped-before-restart");
+
+        const popupState = await sendRuntimeMessage(controller, MessageType.RUNTIME_GET_POPUP_STATE);
+        assert.equal(popupState.recentResult.finalText, "recovered capped transcript");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
   it("reports an unassigned keyboard shortcut to the popup", async () => {
     await withMutedConsole(async () => {
       const chromeApi = createChromeApi({
@@ -1200,6 +1330,16 @@ function getPublicSession(controller) {
   });
 
   return response.session;
+}
+
+function sendOffscreenMessage(controller, type, sessionId) {
+  return new Promise((resolve) => {
+    controller.handleRuntimeMessage({
+      rawMessage: createEnvelope(type, {}, sessionId),
+      sender: {},
+      sendResponse: resolve
+    });
+  });
 }
 
 function sendPermissionResult(controller, sessionId, payload) {

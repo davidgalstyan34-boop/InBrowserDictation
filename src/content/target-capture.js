@@ -17,7 +17,7 @@ const CONTENTEDITABLE_SELECTOR = "[contenteditable]:not([contenteditable='false'
  * across extension messaging.
  */
 export function captureActiveTarget() {
-  const element = document.activeElement;
+  const element = getDeepActiveElement();
   const selectedEditorTarget = captureSelectedContentEditableTarget();
 
   if (!element || element === document.body || element === document.documentElement) {
@@ -44,6 +44,25 @@ export function captureActiveTarget() {
     kind: "none",
     reason: "Focused element is not editable"
   };
+}
+
+/**
+ * Resolves the focused element through open shadow roots.
+ *
+ * `document.activeElement` stops at the shadow host, so a web-component editor
+ * reports the custom element rather than the input inside it. Each shadow root
+ * tracks its own `activeElement`, so the real target is found by descending
+ * while hosts keep delegating focus inward. Closed shadow roots expose no
+ * `shadowRoot`, so descent simply stops there.
+ */
+function getDeepActiveElement(root = document) {
+  let element = root.activeElement;
+
+  while (element?.shadowRoot?.activeElement) {
+    element = element.shadowRoot.activeElement;
+  }
+
+  return element;
 }
 
 /**

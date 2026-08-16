@@ -14,7 +14,7 @@ import { getToggleDictationShortcutState } from "../diagnostics/shortcut-state.j
 import { createRecentResultStore } from "../session/recent-result-store.js";
 import { createSessionStore } from "../session/store.js";
 import { createCommandFlow } from "./command-flow.js";
-import { showFailureState } from "./overlay-feedback.js";
+import { showFailureState, showRecordingLimitReachedState } from "./overlay-feedback.js";
 import { createProcessingFlow } from "./processing-flow.js";
 import { createRecordingFlow } from "./recording-flow.js";
 import { createSessionWatchdog } from "./session-watchdog.js";
@@ -36,6 +36,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   });
   const textImprovement = createTextImprovementClient({
     storageArea: chromeApi.storage?.sync,
+    sessionStorageArea: chromeApi.storage?.session,
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
   const sessions = createSessionStore({
@@ -82,7 +83,8 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult,
     [MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT]: retryRecentImprovement,
     [MessageType.RUNTIME_TOGGLE_DICTATION]: toggleFromRuntimeMessage,
-    [MessageType.RUNTIME_CANCEL_DICTATION]: cancelFromRuntimeMessage
+    [MessageType.RUNTIME_CANCEL_DICTATION]: cancelFromRuntimeMessage,
+    [MessageType.OFFSCREEN_RECORDING_DURATION_CAPPED]: handleRecordingDurationCapped
   });
 
   return {
@@ -166,6 +168,37 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       });
 
     return true;
+  }
+
+  /**
+   * Continues the pipeline for a recording that hit the maximum length.
+   *
+   * The recorder has already stopped and is holding the audio. Running the
+   * ordinary toggle collects it through the same stop path the user's shortcut
+   * would take, including the recovery path when this worker was restarted by
+   * the message itself and no longer remembers the session.
+   */
+  function handleRecordingDurationCapped({ sendResponse }) {
+    void continueAfterDurationCap()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => {
+        console.error("[In-Browser Dictation] Capped recording could not be processed.", error);
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "The capped recording could not be processed.")
+        });
+      });
+
+    return true;
+  }
+
+  async function continueAfterDurationCap() {
+    const session = sessions.get();
+    if (session.status === DictationStatus.RECORDING) {
+      await showRecordingLimitReachedState(content, session);
+    }
+
+    await commandFlow.handleToggleCommand();
   }
 
   /**

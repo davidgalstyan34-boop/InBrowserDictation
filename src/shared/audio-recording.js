@@ -8,6 +8,11 @@ const AUDIO_MIME_TYPE_CANDIDATES = Object.freeze([
 
 const MIN_RECORDING_BYTES = 512;
 
+// Recording has no natural end: the user stops it. A session left running holds
+// the microphone open and grows a blob that is base64-inflated through
+// extension messaging, so it is capped and finalized rather than abandoned.
+export const MAX_RECORDING_MS = 300_000;
+
 /**
  * Chooses the first MIME type that the current browser says MediaRecorder can
  * emit. Returning an empty string lets MediaRecorder pick its default format.

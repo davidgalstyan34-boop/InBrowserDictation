@@ -1,6 +1,6 @@
 import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
 import { dismissDictationOverlay, renderDictationOverlay } from "./overlay.js";
-import { captureActiveTarget, describeCapturedTarget, summarizeCapturedTarget } from "./target-capture.js";
+import { captureActiveTarget, summarizeCapturedTarget } from "./target-capture.js";
 import { insertTextIntoCapturedTarget } from "./text-insertion.js";
 
 // Content-side target state keeps live DOM references out of the service
@@ -43,6 +43,11 @@ function renderStateMessage({ message, sendResponse }) {
 
 /**
  * Captures the page target at dictation start and reports a safe summary.
+ *
+ * This runs in whichever frame claimed the session, which may be a nested
+ * iframe. Overlay rendering is deliberately left to the background, which
+ * addresses the top frame: an overlay drawn inside a small, scrolled, or
+ * hidden iframe would be clipped or invisible.
  */
 function prepareDictation({ message, sendResponse }) {
   const target = captureActiveTarget();
@@ -51,11 +56,6 @@ function prepareDictation({ message, sendResponse }) {
     target,
     capturedAt: Date.now()
   };
-
-  renderDictationOverlay({
-    title: "Ready",
-    detail: describeCapturedTarget(target)
-  });
 
   sendResponse({
     ok: true,
@@ -103,25 +103,21 @@ function insertText({ message, sendResponse }) {
 
 /**
  * Removes page feedback for a completed or failed session.
+ *
+ * This message is broadcast to every frame, and the two things it clears live
+ * in different places: the overlay is in the top frame, while the captured
+ * target is in whichever frame claimed the session. Each is released on its
+ * own terms rather than being gated on the other.
  */
 function dismissOverlay({ message, sendResponse }) {
-  runWithCurrentCapturedTarget(message.sessionId, () => {
+  // Late messages can arrive after the user has started a new session. The id
+  // check prevents an old command from clearing newer page target state.
+  if (!message.sessionId || capturedTargetState?.sessionId === message.sessionId) {
     capturedTargetState = null;
-    dismissDictationOverlay();
-  });
-
-  sendResponse({ ok: true });
-}
-
-/**
- * Guards session-bound mutations against stale messages.
- */
-function runWithCurrentCapturedTarget(sessionId, action) {
-  // Late messages can arrive after the user has started a new session. The
-  // id check prevents an old command from clearing newer page target state.
-  if (!sessionId || capturedTargetState?.sessionId === sessionId) {
-    action();
   }
+
+  dismissDictationOverlay();
+  sendResponse({ ok: true });
 }
 
 function toMessageError(error, fallbackMessage) {

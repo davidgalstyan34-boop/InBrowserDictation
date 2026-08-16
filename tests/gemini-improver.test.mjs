@@ -386,6 +386,92 @@ describe("Gemini text improver", () => {
     assert.equal(result.providerMeta.model, FALLBACK_GEMINI_MODELS[0]);
   });
 
+  it("remembers the model and shape that worked and starts there next time", async () => {
+    const urls = [];
+    const compatibility = createInMemoryCompatibility();
+    const fetchApi = async (url) => {
+      urls.push(String(url));
+
+      if (isRequestForModel(url, DEFAULT_GEMINI_MODEL)) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 404,
+            status: "NOT_FOUND",
+            message: `models/${DEFAULT_GEMINI_MODEL} is not found for API version v1beta.`
+          }
+        }), { status: 404 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          { content: { parts: [{ text: "Result." }] }, finishReason: "STOP" }
+        ]
+      }), { status: 200 });
+    };
+
+    const request = () => improveTextWithGemini({
+      text: "some transcript",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi,
+      compatibility
+    });
+
+    await request();
+    assert.equal(urls.length, 2, "first request probes the unavailable primary model");
+
+    urls.length = 0;
+    await request();
+
+    // The unavailable primary model is not probed again.
+    assert.equal(urls.length, 1);
+    assert.equal(isRequestForModel(urls[0], FALLBACK_GEMINI_MODELS[0]), true);
+    assert.deepEqual(await compatibility.load(), {
+      model: FALLBACK_GEMINI_MODELS[0],
+      requestShape: "snake-case-system-instruction"
+    });
+  });
+
+  it("falls back to the full ladder when the remembered model stops working", async () => {
+    const urls = [];
+    const compatibility = createInMemoryCompatibility({
+      model: FALLBACK_GEMINI_MODELS[0],
+      requestShape: "snake-case-system-instruction"
+    });
+    const fetchApi = async (url) => {
+      urls.push(String(url));
+
+      if (isRequestForModel(url, FALLBACK_GEMINI_MODELS[0])) {
+        return new Response(JSON.stringify({
+          error: {
+            code: 404,
+            status: "NOT_FOUND",
+            message: `models/${FALLBACK_GEMINI_MODELS[0]} is not found for API version v1beta.`
+          }
+        }), { status: 404 });
+      }
+
+      return new Response(JSON.stringify({
+        candidates: [
+          { content: { parts: [{ text: "Recovered." }] }, finishReason: "STOP" }
+        ]
+      }), { status: 200 });
+    };
+
+    const result = await improveTextWithGemini({
+      text: "some transcript",
+      style,
+      settings: { llmApiKey: "gemini-key" },
+      fetchApi,
+      compatibility
+    });
+
+    assert.equal(result.text, "Recovered.");
+    assert.equal(isRequestForModel(urls[0], FALLBACK_GEMINI_MODELS[0]), true);
+    assert.equal(isRequestForModel(urls[1], DEFAULT_GEMINI_MODEL), true);
+    assert.equal((await compatibility.load()).model, DEFAULT_GEMINI_MODEL);
+  });
+
   it("bypasses provider calls when the Raw style is selected", async () => {
     const client = createTextImprovementClient({
       storageArea: {
@@ -411,3 +497,21 @@ describe("Gemini text improver", () => {
     });
   });
 });
+
+function createInMemoryCompatibility(initialValue = null) {
+  let value = initialValue;
+
+  return {
+    load: async () => value,
+    save: async (nextValue) => {
+      value = nextValue;
+      return value;
+    }
+  };
+}
+
+// Model names are prefixes of one another (gemini-3.5-flash-lite contains
+// gemini-3.5-flash), so stubs must match the whole path segment.
+function isRequestForModel(url, model) {
+  return String(url).endsWith(`/${model}:generateContent`);
+}

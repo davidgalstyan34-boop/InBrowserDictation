@@ -1,4 +1,5 @@
 import {
+  MAX_RECORDING_MS,
   createAudioMetadata,
   createMediaRecorderOptions,
   createRecordingError,
@@ -6,12 +7,19 @@ import {
   normalizeRecordingError,
   selectSupportedAudioMimeType
 } from "../shared/audio-recording.js";
-import { MessageType, parseMessageEnvelope } from "../shared/messages.js";
+import { MessageType, createEnvelope, parseMessageEnvelope } from "../shared/messages.js";
 
 // The offscreen document owns live microphone objects because the MV3 service
 // worker cannot rely on DOM/media APIs. It returns only serializable recording
 // results to the background controller.
 let activeRecording = null;
+
+// Audio from a recording that ended on its own, waiting to be collected.
+//
+// The duration cap can fire while the service worker is suspended, so the
+// finished payload is held here until the worker asks for it. Dropping it would
+// throw away audio the user already spoke.
+let finishedRecording = null;
 
 const messageHandlers = Object.freeze({
   [MessageType.OFFSCREEN_GET_RECORDING_STATE]: getRecordingState,
@@ -45,6 +53,9 @@ async function startRecording(message) {
       "A recording is already active."
     );
   }
+
+  // A new session supersedes audio nobody collected.
+  finishedRecording = null;
 
   if (!navigator.mediaDevices?.getUserMedia) {
     throw createRecordingError(
@@ -82,10 +93,15 @@ async function startRecording(message) {
       stream,
       chunks,
       startedAt,
-      completion
+      completion,
+      durationCapId: null
     };
 
     recorder.start(250);
+    activeRecording.durationCapId = setTimeout(
+      () => void finishRecordingAtDurationCap(message.sessionId, completion),
+      MAX_RECORDING_MS
+    );
 
     return {
       recording: {
@@ -103,15 +119,16 @@ async function startRecording(message) {
 
 /**
  * Stops the active recorder and waits for the final audio blob conversion.
+ *
+ * A recording that already ended at the duration cap is collected here too, so
+ * pressing stop after the cap still returns the audio instead of reporting that
+ * nothing was recording.
  */
 async function stopRecording(message) {
   const recording = activeRecording;
 
   if (!recording) {
-    throw createRecordingError(
-      "RECORDING_NOT_ACTIVE",
-      "No recording is active."
-    );
+    return collectFinishedRecording(message.sessionId);
   }
 
   if (recording.sessionId !== message.sessionId) {
@@ -121,6 +138,8 @@ async function stopRecording(message) {
     );
   }
 
+  clearDurationCap(recording);
+
   if (recording.recorder.state !== "inactive") {
     recording.recorder.stop();
   }
@@ -129,19 +148,107 @@ async function stopRecording(message) {
 }
 
 /**
- * Reports lightweight active-recorder metadata for service-worker recovery.
+ * Ends a recording that reached the maximum length, keeping its audio.
+ *
+ * The service worker is told so the transcription pipeline continues without
+ * the user pressing stop. If it is suspended and never hears, the payload waits
+ * here and the next command collects it.
+ */
+async function finishRecordingAtDurationCap(sessionId, completion) {
+  const recording = activeRecording;
+  if (recording?.sessionId !== sessionId) {
+    return;
+  }
+
+  clearDurationCap(recording);
+
+  if (recording.recorder.state !== "inactive") {
+    recording.recorder.stop();
+  }
+
+  try {
+    const result = await completion;
+    finishedRecording = {
+      sessionId,
+      tabId: recording.tabId,
+      startedAt: recording.startedAt,
+      mimeType: result.audio?.mimeType ?? "",
+      result
+    };
+  } catch (error) {
+    finishedRecording = null;
+    console.warn("[In-Browser Dictation] Capped recording could not be finalized.", error);
+    return;
+  }
+
+  await notifyBackgroundOfDurationCap(sessionId);
+}
+
+async function notifyBackgroundOfDurationCap(sessionId) {
+  try {
+    await chrome.runtime.sendMessage(createEnvelope(
+      MessageType.OFFSCREEN_RECORDING_DURATION_CAPPED,
+      {},
+      sessionId
+    ));
+  } catch {
+    // No listener right now. The audio stays here for the next command.
+  }
+}
+
+function collectFinishedRecording(sessionId) {
+  if (finishedRecording?.sessionId !== sessionId) {
+    throw createRecordingError(
+      "RECORDING_NOT_ACTIVE",
+      "No recording is active."
+    );
+  }
+
+  const { result } = finishedRecording;
+  finishedRecording = null;
+  return result;
+}
+
+function clearDurationCap(recording) {
+  if (recording.durationCapId !== null) {
+    clearTimeout(recording.durationCapId);
+    recording.durationCapId = null;
+  }
+}
+
+/**
+ * Reports lightweight recorder metadata for service-worker recovery.
+ *
+ * A recording that ended at the duration cap is reported the same way as a live
+ * one. The worker recovers it into a stoppable session and collects the audio
+ * on its next stop, which is what keeps a capped recording from being lost to a
+ * suspension.
  */
 async function getRecordingState() {
-  return {
-    recording: activeRecording
-      ? {
-          sessionId: activeRecording.sessionId,
-          tabId: activeRecording.tabId,
-          startedAt: activeRecording.startedAt,
-          mimeType: activeRecording.recorder.mimeType || ""
-        }
-      : null
-  };
+  if (activeRecording) {
+    return {
+      recording: {
+        sessionId: activeRecording.sessionId,
+        tabId: activeRecording.tabId,
+        startedAt: activeRecording.startedAt,
+        mimeType: activeRecording.recorder.mimeType || ""
+      }
+    };
+  }
+
+  if (finishedRecording) {
+    return {
+      recording: {
+        sessionId: finishedRecording.sessionId,
+        tabId: finishedRecording.tabId,
+        startedAt: finishedRecording.startedAt,
+        mimeType: finishedRecording.mimeType,
+        durationCapped: true
+      }
+    };
+  }
+
+  return { recording: null };
 }
 
 /**
