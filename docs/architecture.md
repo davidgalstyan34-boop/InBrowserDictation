@@ -60,7 +60,7 @@ Options page:
 
 Popup:
 
-- Reflects current status, selected style, and shortcut.
+- Reflects current status, selected style, and Chrome's active shortcut assignment.
 - Provides optional start/stop, latest-result copy, raw-transcript copy, retry rewrite, and settings access.
 - Remains secondary; normal usage does not require opening it.
 
@@ -298,7 +298,7 @@ Options:
 
 Popup:
 
-- status, style, shortcut, start/stop;
+- status, style, actual shortcut assignment, start/stop;
 - latest final result display and copy;
 - raw transcript copy;
 - retry rewrite from the latest raw transcript.

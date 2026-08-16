@@ -418,6 +418,8 @@ describe("dictation controller", () => {
         assert.equal(popupState.recentResult.rawTranscript, "raw transcript");
         assert.equal(popupState.recentResult.finalText, "First polished result.");
         assert.equal(popupState.style.name, "Default");
+        assert.equal(popupState.shortcut.assigned, true);
+        assert.equal(popupState.shortcut.shortcut, "Ctrl+Shift+Space");
         assert.equal("text" in popupState.session.outputText, false);
 
         const retry = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
@@ -428,9 +430,47 @@ describe("dictation controller", () => {
       }
     });
   });
+
+  it("reports an unassigned keyboard shortcut to the popup", async () => {
+    await withMutedConsole(async () => {
+      const chromeApi = createChromeApi({
+        commandShortcuts: [
+          {
+            name: "toggle-dictation",
+            shortcut: ""
+          }
+        ],
+        tabMessages: [],
+        runtimeSendMessage: async (message) => {
+          throw new Error(`Unexpected runtime message: ${message.type}`);
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: {
+          randomUUID: () => "session-shortcut-missing"
+        }
+      });
+
+      const popupState = await sendRuntimeMessage(controller, MessageType.RUNTIME_GET_POPUP_STATE);
+
+      assert.equal(popupState.shortcut.assigned, false);
+      assert.equal(popupState.shortcut.shortcut, "");
+      assert.equal(popupState.shortcut.status, "unassigned");
+      assert.equal(popupState.shortcut.suggested, "Ctrl+Shift+Space / Command+Shift+Space");
+      assert.equal(popupState.shortcut.settingsUrl, "chrome://extensions/shortcuts");
+    });
+  });
 });
 
 function createChromeApi({
+  commandShortcuts = [
+    {
+      name: "toggle-dictation",
+      shortcut: "Ctrl+Shift+Space"
+    }
+  ],
   contexts = null,
   storedSettings = {},
   tabMessages,
@@ -444,6 +484,9 @@ function createChromeApi({
   return {
     queryCount: () => queryCount,
     closeDocumentCount: () => closeDocumentCount,
+    commands: {
+      getAll: async () => commandShortcuts
+    },
     tabs: {
       query: async () => {
         queryCount += 1;

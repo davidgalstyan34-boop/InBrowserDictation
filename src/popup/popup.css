@@ -117,6 +117,39 @@ body {
   overflow-wrap: anywhere;
 }
 
+.summary-row strong[data-tone="warning"] {
+  color: var(--warning);
+}
+
+.shortcut-state {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.shortcut-settings-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  border-color: #d6b86f;
+  background: var(--warning-bg);
+  color: var(--warning);
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.shortcut-settings-button:hover:not(:disabled) {
+  background: #ffedaa;
+}
+
+.shortcut-warning {
+  margin: -4px 0 0 82px;
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .action-row,
 .result-actions {
   display: grid;

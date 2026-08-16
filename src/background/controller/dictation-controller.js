@@ -10,6 +10,7 @@ import { createMicrophonePermissionClient } from "../clients/microphone-permissi
 import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
 import { createSpeechToTextClient } from "../providers/speech-to-text-client.js";
 import { createTextImprovementClient } from "../providers/text-improvement-client.js";
+import { getToggleDictationShortcutState } from "../diagnostics/shortcut-state.js";
 import { createRecentResultStore } from "../session/recent-result-store.js";
 import { createSessionStore } from "../session/store.js";
 import { createCommandFlow } from "./command-flow.js";
@@ -219,9 +220,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   async function buildPopupState() {
-    const [settings, recentResult] = await Promise.all([
+    const [settings, recentResult, shortcut] = await Promise.all([
       loadSettings(chromeApi.storage?.sync),
-      recentResults.load()
+      recentResults.load(),
+      getToggleDictationShortcutState(chromeApi)
     ]);
     const style = resolveRewriteStyle(settings);
 
@@ -234,7 +236,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
         name: style.name,
         description: style.description ?? ""
       },
-      shortcut: "Ctrl+Shift+Space / Command+Shift+Space"
+      shortcut
     };
   }
 

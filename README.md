@@ -61,7 +61,7 @@ If the captured target is gone, stale, or no editable target was focused, the ex
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
-The toolbar popup is optional. It shows current status, selected style, the default shortcut, and the latest successful result. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings.
+The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings.
 
 ## Privacy Notes
 
