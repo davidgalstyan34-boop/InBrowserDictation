@@ -92,6 +92,7 @@ label {
 
 input,
 select,
+textarea,
 button {
   min-height: 40px;
   border-radius: 6px;
@@ -99,7 +100,8 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid var(--border-strong);
   padding: 8px 10px;
@@ -109,9 +111,16 @@ select {
 
 input:focus,
 select:focus,
+textarea:focus,
 button:focus-visible {
   outline: 3px solid rgba(37, 99, 235, 0.22);
   outline-offset: 2px;
+}
+
+textarea {
+  min-height: 132px;
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .field-header {
@@ -215,6 +224,88 @@ button:hover {
   background: var(--accent-hover);
 }
 
+.secondary-button {
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: #253044;
+}
+
+.secondary-button:hover {
+  background: #eef2f7;
+}
+
+.danger-button {
+  border: 1px solid rgba(180, 35, 24, 0.36);
+  background: #ffffff;
+  color: var(--error);
+}
+
+.danger-button:hover {
+  background: var(--error-bg);
+}
+
+.custom-style-list {
+  display: grid;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.custom-style-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.custom-style-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #f8fafc;
+}
+
+.custom-style-row strong,
+.custom-style-row span {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.custom-style-row strong {
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.custom-style-row span {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.custom-style-row button {
+  min-height: 32px;
+  border: 1px solid var(--border-strong);
+  background: #ffffff;
+  color: #253044;
+}
+
+.custom-style-row[data-selected="true"] {
+  border-color: rgba(37, 99, 235, 0.42);
+  background: #eff6ff;
+}
+
+.custom-style-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .save-status {
   margin: 0;
   color: var(--text-muted);
@@ -231,7 +322,8 @@ button:hover {
 }
 
 input[aria-invalid="true"],
-select[aria-invalid="true"] {
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
   border-color: var(--error);
 }
 
@@ -258,5 +350,10 @@ select[aria-invalid="true"] {
 
   .form-actions button {
     width: 100%;
+  }
+
+  .custom-style-row,
+  .custom-style-actions {
+    grid-template-columns: 1fr;
   }
 }

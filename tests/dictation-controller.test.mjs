@@ -314,6 +314,120 @@ describe("dictation controller", () => {
       }
     });
   });
+
+  it("reports the latest successful result to the popup and retries rewriting it", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const geminiTexts = ["First polished result.", "Retried polished result."];
+
+      globalThis.fetch = async (url) => {
+        const href = String(url);
+
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createJsonResponse({
+            metadata: {
+              request_id: "deepgram-request",
+              duration: 1.2
+            },
+            results: {
+              channels: [
+                {
+                  alternatives: [
+                    {
+                      transcript: "raw transcript",
+                      confidence: 0.98
+                    }
+                  ]
+                }
+              ]
+            }
+          });
+        }
+
+        if (href.startsWith("https://generativelanguage.googleapis.com/")) {
+          return createJsonResponse({
+            responseId: "gemini-response",
+            modelVersion: "gemini-test",
+            candidates: [
+              {
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: geminiTexts.shift()
+                    }
+                  ]
+                }
+              }
+            ]
+          });
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            llmApiKey: "gemini-key"
+          },
+          tabMessages,
+          runtimeSendMessage: async (message) => {
+            runtimeMessages.push(message);
+
+            if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+              return {
+                ok: true,
+                recording: {
+                  startedAt: 1000,
+                  tabId: 7,
+                  mimeType: "audio/webm"
+                }
+              };
+            }
+
+            if (message.type === MessageType.OFFSCREEN_STOP_RECORDING) {
+              return {
+                ok: true,
+                audio: createTestAudioPayload()
+              };
+            }
+
+            throw new Error(`Unexpected runtime message: ${message.type}`);
+          }
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-recent-result"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+        await controller.handleCommand("toggle-dictation", {
+          tab: { id: 7 }
+        });
+
+        const popupState = await sendRuntimeMessage(controller, MessageType.RUNTIME_GET_POPUP_STATE);
+        assert.equal(popupState.recentResult.rawTranscript, "raw transcript");
+        assert.equal(popupState.recentResult.finalText, "First polished result.");
+        assert.equal(popupState.style.name, "Default");
+        assert.equal("text" in popupState.session.outputText, false);
+
+        const retry = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
+        assert.equal(retry.recentResult.finalText, "Retried polished result.");
+        assert.equal(retry.recentResult.insertion.method, "popup-retry");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
 });
 
 function createChromeApi({
@@ -342,6 +456,17 @@ function createChromeApi({
           return {
             ok: true,
             target: { kind: "textarea" }
+          };
+        }
+
+        if (message.type === MessageType.CONTENT_INSERT_TEXT) {
+          return {
+            ok: true,
+            insertion: {
+              method: "target",
+              targetKind: "textarea",
+              textLength: message.payload.text.length
+            }
           };
         }
 
@@ -398,6 +523,16 @@ function getPublicSession(controller) {
   return response.session;
 }
 
+function sendRuntimeMessage(controller, type, payload = {}) {
+  return new Promise((resolve) => {
+    controller.handleRuntimeMessage({
+      rawMessage: createEnvelope(type, payload),
+      sender: {},
+      sendResponse: resolve
+    });
+  });
+}
+
 function createTestAudioPayload() {
   return {
     mimeType: "audio/webm",
@@ -420,6 +555,14 @@ function createDeferred() {
     promise,
     resolve,
     reject
+  };
+}
+
+function createJsonResponse(payload, { ok = true, status = 200 } = {}) {
+  return {
+    ok,
+    status,
+    json: async () => payload
   };
 }
 

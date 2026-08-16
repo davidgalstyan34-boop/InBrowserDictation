@@ -97,7 +97,53 @@ describe("content text insertion", () => {
     assert.deepEqual(events.map((event) => event.type), ["beforeinput", "input"]);
   });
 
-  it("inserts into a captured contenteditable range", async () => {
+  it("uses the editor insertText command for contenteditable targets when available", async () => {
+    const selectedRanges = [];
+    const commands = [];
+    const commonAncestor = {};
+    const element = {
+      isConnected: true,
+      contains: (node) => node === commonAncestor,
+      dispatchEvent: () => true,
+      focus() {}
+    };
+    const range = {
+      commonAncestorContainer: commonAncestor
+    };
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "contenteditable",
+      element,
+      range
+    }, "edited text", {
+      clipboard: null,
+      documentRef: {
+        createTextNode: (text) => ({ textContent: text }),
+        queryCommandSupported: (command) => command === "insertText",
+        execCommand(command, _showUi, value) {
+          commands.push([command, value]);
+          return true;
+        }
+      },
+      windowRef: {
+        getSelection: () => ({
+          removeAllRanges: () => selectedRanges.push(null),
+          addRange: (nextRange) => selectedRanges.push(nextRange)
+        })
+      }
+    });
+
+    assert.deepEqual(result, {
+      method: "target",
+      strategy: "exec-command",
+      targetKind: "contenteditable",
+      textLength: 11
+    });
+    assert.deepEqual(commands, [["insertText", "edited text"]]);
+    assert.equal(selectedRanges.includes(range), true);
+  });
+
+  it("falls back to captured contenteditable range insertion", async () => {
     const commonAncestor = {};
     const insertedNodes = [];
     const selectedRanges = [];
@@ -151,6 +197,7 @@ describe("content text insertion", () => {
 
     assert.deepEqual(result, {
       method: "target",
+      strategy: "range",
       targetKind: "contenteditable",
       textLength: 11
     });

@@ -1,6 +1,6 @@
 # In-Browser Dictation
 
-Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, Deepgram speech-to-text, Gemini text improvement, target insertion, and clipboard fallback.
+Chrome extension for shortcut-driven dictation. The current build contains the Manifest V3 runtime, service worker, content script handshake, keyboard command, options storage, shared state/message contracts, offscreen microphone recording, Deepgram speech-to-text, Gemini text improvement, target insertion, clipboard fallback, custom rewrite styles, a toolbar popup, latest-result recovery, and retry rewrite.
 
 ## Current Capability
 
@@ -10,7 +10,7 @@ Current goal:
 Shortcut -> record -> stop -> send audio to Deepgram -> improve transcript with Gemini -> insert into the captured target or copy to clipboard.
 ```
 
-Phase 6 product feedback is now included: explicit overlay progress/error states, API key readiness, key visibility controls, and style-dependent Gemini requirements. See [docs/architecture.md](docs/architecture.md).
+Phase 7 product differentiation is now included: custom reusable styles, latest-result recovery, popup controls, retry rewrite, and stronger contenteditable insertion. See [docs/architecture.md](docs/architecture.md).
 
 ## Prerequisites
 
@@ -45,6 +45,7 @@ Open the extension options page and save:
 - Deepgram API key for STT.
 - Gemini API key for LLM rewriting.
 - Default rewrite style.
+- Optional custom rewrite styles.
 
 The Gemini key is optional when the selected style is Raw because that path skips text improvement.
 
@@ -60,11 +61,15 @@ If the captured target is gone, stale, or no editable target was focused, the ex
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
+The toolbar popup is optional. It shows current status, selected style, the default shortcut, and the latest successful result. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings.
+
 ## Privacy Notes
 
 The current build sends microphone audio to the configured STT provider at `https://api.deepgram.com/*` and transcript text to the configured LLM provider at `https://generativelanguage.googleapis.com/*`.
 
 The default LLM model is `gemini-3.5-flash-lite`, which is available on the Gemini API free tier. Google documents that free-tier Gemini API content may be used to improve Google products; use a paid-tier project or a backend proxy if that is not acceptable for your data.
+
+The latest successful result is kept temporarily in `chrome.storage.session` for popup recovery. Page overlays and generic runtime state snapshots still avoid exposing transcript text.
 
 Permissions used today:
 
@@ -79,7 +84,8 @@ Permissions used today:
 
 - Requires a saved Deepgram API key before transcription can complete.
 - Requires a saved Gemini API key for non-Raw text improvement styles.
-- Rich editor support is basic; complex editors may fall back to clipboard.
+- Rich editor support now tries the browser editor `insertText` command before range insertion, but complex editors may still fall back to clipboard.
+- Popup retry reruns Gemini text improvement from the stored raw transcript; it does not perform a full audio/STT retry.
 - Content scripts cannot run on restricted Chrome pages such as `chrome://extensions`.
 
 ## Troubleshooting

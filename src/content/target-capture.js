@@ -1,11 +1,13 @@
 // Selection APIs are only reliable for these freeform text input types.
 const inputTextTypes = new Set([
   "",
+  "email",
   "search",
   "tel",
   "text",
   "url"
 ]);
+const CONTENTEDITABLE_SELECTOR = "[contenteditable]:not([contenteditable='false'])";
 
 /**
  * Captures the currently focused editable target for a dictation session.
@@ -16,9 +18,10 @@ const inputTextTypes = new Set([
  */
 export function captureActiveTarget() {
   const element = document.activeElement;
+  const selectedEditorTarget = captureSelectedContentEditableTarget();
 
   if (!element || element === document.body || element === document.documentElement) {
-    return {
+    return selectedEditorTarget ?? {
       kind: "none",
       reason: "No editable target is focused"
     };
@@ -37,7 +40,7 @@ export function captureActiveTarget() {
     }
   }
 
-  return {
+  return selectedEditorTarget ?? {
     kind: "none",
     reason: "Focused element is not editable"
   };
@@ -99,7 +102,7 @@ function captureTextAreaTarget(element) {
  * Captures a contenteditable root and its current selection range when safe.
  */
 function captureContentEditableTarget(element) {
-  const editableRoot = element.closest?.("[contenteditable=''], [contenteditable='true']");
+  const editableRoot = findEditableRoot(element);
   if (!(editableRoot instanceof HTMLElement)) {
     return null;
   }
@@ -118,6 +121,28 @@ function captureContentEditableTarget(element) {
     // the serializable summary returned by summarizeCapturedTarget.
     range: ownsSelection ? range.cloneRange() : null
   };
+}
+
+function captureSelectedContentEditableTarget() {
+  const selection = window.getSelection?.();
+  const selectedElement = getElementFromNode(selection?.anchorNode);
+  const editableRoot = findEditableRoot(selectedElement);
+
+  return editableRoot ? captureContentEditableTarget(editableRoot) : null;
+}
+
+function findEditableRoot(element) {
+  return element instanceof HTMLElement
+    ? element.closest?.(CONTENTEDITABLE_SELECTOR)
+    : null;
+}
+
+function getElementFromNode(node) {
+  if (node instanceof HTMLElement) {
+    return node;
+  }
+
+  return node?.parentElement ?? null;
 }
 
 /**

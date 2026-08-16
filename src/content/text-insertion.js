@@ -132,7 +132,7 @@ function insertIntoContentEditable(target, text, environment) {
   const range = target.range;
   assertUsableElement(element);
 
-  if (!range || typeof range.deleteContents !== "function" || typeof range.insertNode !== "function") {
+  if (!range) {
     throw createInsertionError(
       "INSERTION_RANGE_MISSING",
       "The captured editor selection is no longer available."
@@ -146,6 +146,25 @@ function insertIntoContentEditable(target, text, environment) {
     );
   }
 
+  element.focus?.();
+  restoreRangeSelection(range, environment.windowRef);
+
+  if (tryInsertWithEditorCommand(text, environment)) {
+    return {
+      method: "target",
+      strategy: "exec-command",
+      targetKind: "contenteditable",
+      textLength: text.length
+    };
+  }
+
+  if (typeof range.deleteContents !== "function" || typeof range.insertNode !== "function") {
+    throw createInsertionError(
+      "INSERTION_RANGE_MISSING",
+      "The captured editor selection is no longer available."
+    );
+  }
+
   const textNode = environment.documentRef?.createTextNode?.(text);
   if (!textNode) {
     throw createInsertionError(
@@ -154,8 +173,6 @@ function insertIntoContentEditable(target, text, environment) {
     );
   }
 
-  element.focus?.();
-  restoreRangeSelection(range, environment.windowRef);
   dispatchBeforeInput(element, text, environment);
 
   range.deleteContents();
@@ -166,9 +183,27 @@ function insertIntoContentEditable(target, text, environment) {
 
   return {
     method: "target",
+    strategy: "range",
     targetKind: "contenteditable",
     textLength: text.length
   };
+}
+
+function tryInsertWithEditorCommand(text, { documentRef }) {
+  if (typeof documentRef?.execCommand !== "function") {
+    return false;
+  }
+
+  try {
+    if (typeof documentRef.queryCommandSupported === "function"
+      && !documentRef.queryCommandSupported("insertText")) {
+      return false;
+    }
+
+    return documentRef.execCommand("insertText", false, text) === true;
+  } catch {
+    return false;
+  }
 }
 
 function assertUsableElement(element) {

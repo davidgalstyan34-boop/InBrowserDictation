@@ -73,6 +73,31 @@
           <p id="default-style-error" class="field-error" role="alert"></p>
         </section>
 
+        <section class="settings-section" aria-labelledby="custom-style-heading">
+          <div class="section-heading">
+            <h2 id="custom-style-heading">Custom Styles</h2>
+            <p>Reusable rewrite instructions.</p>
+          </div>
+
+          <div id="custom-style-list" class="custom-style-list" role="list"></div>
+
+          <input id="custom-style-id" type="hidden">
+
+          <label for="custom-style-name">Name</label>
+          <input id="custom-style-name" type="text" autocomplete="off" maxlength="64" aria-describedby="custom-style-help custom-style-error">
+
+          <label for="custom-style-instructions">Instructions</label>
+          <textarea id="custom-style-instructions" rows="6" maxlength="2000" spellcheck="true" aria-describedby="custom-style-help custom-style-error"></textarea>
+          <p id="custom-style-help" class="field-note">Create a short style name and direct instructions for the rewrite.</p>
+          <p id="custom-style-error" class="field-error" role="alert"></p>
+
+          <div class="custom-style-actions">
+            <button id="custom-style-save" type="button">Save Style</button>
+            <button id="custom-style-new" type="button" class="secondary-button">New</button>
+            <button id="custom-style-delete" type="button" class="danger-button">Delete</button>
+          </div>
+        </section>
+
         <footer class="form-actions">
           <button id="save-button" type="submit">Save Settings</button>
           <p id="save-status" class="save-status" role="status" aria-live="polite"></p>

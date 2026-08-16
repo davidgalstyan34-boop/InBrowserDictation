@@ -1,14 +1,14 @@
 /**
  * Reads and renders the persisted options form values.
  */
-export function readFormSettings(elements) {
+export function readFormSettings(elements, customStyles = []) {
   return {
     sttProvider: elements.sttProvider.value,
     sttApiKey: elements.sttApiKey.value.trim(),
     llmProvider: elements.llmProvider.value,
     llmApiKey: elements.llmApiKey.value.trim(),
     defaultStyleId: elements.defaultStyle.value,
-    customStyles: []
+    customStyles
   };
 }
 

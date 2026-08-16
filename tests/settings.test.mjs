@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_SETTINGS,
+  createCustomStyleId,
   getConfigurationRequirements,
+  getRewriteStyles,
+  normalizeCustomStyles,
   normalizeSettings,
   resolveRewriteStyle,
   validateSettings
@@ -80,6 +83,24 @@ describe("settings", () => {
     assert.equal(result.ok, true);
   });
 
+  it("normalizes custom style ids and keeps them separate from built-ins", () => {
+    const normalized = normalizeCustomStyles([
+      {
+        id: "raw",
+        name: "Raw",
+        instructions: "Use my custom raw style."
+      },
+      {
+        name: "Engineering Slack",
+        instructions: "Write concise technical messages."
+      }
+    ]);
+
+    assert.equal(normalized[0].id, "raw-2");
+    assert.equal(normalized[1].id, "engineering-slack");
+    assert.equal(createCustomStyleId("Engineering Slack", new Set(["engineering-slack"])), "engineering-slack-2");
+  });
+
   it("resolves built-in and custom rewrite style instructions", () => {
     const professional = resolveRewriteStyle({
       ...DEFAULT_SETTINGS,
@@ -101,6 +122,18 @@ describe("settings", () => {
     });
     assert.equal(custom.id, "engineering-slack");
     assert.equal(custom.instructions, "Write concise technical messages.");
+
+    const allStyles = getRewriteStyles({
+      ...DEFAULT_SETTINGS,
+      customStyles: [
+        {
+          id: "engineering-slack",
+          name: "Engineering Slack",
+          instructions: "Write concise technical messages."
+        }
+      ]
+    });
+    assert.equal(allStyles.at(-1).id, "engineering-slack");
   });
 
   it("reports credential requirements for LLM and raw processing paths", () => {

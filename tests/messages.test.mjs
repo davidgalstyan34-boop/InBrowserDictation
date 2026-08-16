@@ -32,6 +32,9 @@ describe("message contracts", () => {
     const stop = createEnvelope(MessageType.OFFSCREEN_STOP_RECORDING, {}, "session-2");
     const dismiss = createEnvelope(MessageType.CONTENT_DISMISS_OVERLAY, {}, "session-2");
     const insert = createEnvelope(MessageType.CONTENT_INSERT_TEXT, { text: "private" }, "session-2");
+    const popup = createEnvelope(MessageType.RUNTIME_GET_POPUP_STATE, {}, null);
+    const retry = createEnvelope(MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT, {}, null);
+    const toggle = createEnvelope(MessageType.RUNTIME_TOGGLE_DICTATION, {}, null);
 
     assert.equal(parseMessageEnvelope(permission).type, MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT);
     assert.equal(parseMessageEnvelope(state).type, MessageType.OFFSCREEN_GET_RECORDING_STATE);
@@ -39,5 +42,8 @@ describe("message contracts", () => {
     assert.equal(parseMessageEnvelope(stop).type, MessageType.OFFSCREEN_STOP_RECORDING);
     assert.equal(parseMessageEnvelope(dismiss).type, MessageType.CONTENT_DISMISS_OVERLAY);
     assert.equal(parseMessageEnvelope(insert).type, MessageType.CONTENT_INSERT_TEXT);
+    assert.equal(parseMessageEnvelope(popup).type, MessageType.RUNTIME_GET_POPUP_STATE);
+    assert.equal(parseMessageEnvelope(retry).type, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
+    assert.equal(parseMessageEnvelope(toggle).type, MessageType.RUNTIME_TOGGLE_DICTATION);
   });
 });

@@ -1,10 +1,16 @@
 import { MessageType, parseMessageEnvelope } from "../../shared/messages.js";
 import { DictationStatus } from "../../shared/dictation-state.js";
+import {
+  getConfigurationRequirements,
+  loadSettings,
+  resolveRewriteStyle
+} from "../../shared/settings.js";
 import { createContentClient } from "../clients/content-client.js";
 import { createMicrophonePermissionClient } from "../clients/microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
 import { createSpeechToTextClient } from "../providers/speech-to-text-client.js";
 import { createTextImprovementClient } from "../providers/text-improvement-client.js";
+import { createRecentResultStore } from "../session/recent-result-store.js";
 import { createSessionStore } from "../session/store.js";
 import { createCommandFlow } from "./command-flow.js";
 import { showFailureState } from "./overlay-feedback.js";
@@ -31,6 +37,9 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
   const sessions = createSessionStore();
+  const recentResults = createRecentResultStore({
+    storageArea: chromeApi.storage?.session
+  });
 
   const recordingFlow = createRecordingFlow({
     content,
@@ -41,6 +50,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   });
   const processingFlow = createProcessingFlow({
     content,
+    recentResults,
     speechToText,
     textImprovement,
     sessions
@@ -60,7 +70,10 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
   const runtimeMessageHandlers = Object.freeze({
     [MessageType.RUNTIME_GET_STATE]: reportRuntimeState,
-    [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult
+    [MessageType.RUNTIME_GET_POPUP_STATE]: reportPopupState,
+    [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult,
+    [MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT]: retryRecentImprovement,
+    [MessageType.RUNTIME_TOGGLE_DICTATION]: toggleFromRuntimeMessage
   });
 
   return {
@@ -105,6 +118,69 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
+   * Returns popup-specific state, including the latest recoverable result text.
+   */
+  function reportPopupState({ sendResponse }) {
+    void buildPopupState()
+      .then((popupState) => {
+        sendResponse({
+          ok: true,
+          ...popupState
+        });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "Popup state could not be loaded.")
+        });
+      });
+
+    return true;
+  }
+
+  /**
+   * Lets the popup use the same start/stop policy as the keyboard shortcut.
+   */
+  function toggleFromRuntimeMessage({ sendResponse }) {
+    void commandFlow.handleToggleCommand()
+      .then(() => {
+        sendResponse({
+          ok: true,
+          session: sessions.toPublicSession()
+        });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "Dictation could not be toggled.")
+        });
+      });
+
+    return true;
+  }
+
+  /**
+   * Retries only the text-improvement step for the stored latest transcript.
+   */
+  function retryRecentImprovement({ sendResponse }) {
+    void retryRecentImprovementInternal()
+      .then((recentResult) => {
+        sendResponse({
+          ok: true,
+          recentResult
+        });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "Recent result could not be retried.")
+        });
+      });
+
+    return true;
+  }
+
+  /**
    * Cancels the active session when its original tab is closed.
    */
   async function handleTabRemoved(tabId) {
@@ -141,6 +217,62 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
     await showFailureState(content, failedSession, message);
   }
+
+  async function buildPopupState() {
+    const [settings, recentResult] = await Promise.all([
+      loadSettings(chromeApi.storage?.sync),
+      recentResults.load()
+    ]);
+    const style = resolveRewriteStyle(settings);
+
+    return {
+      session: sessions.toPublicSession(),
+      recentResult,
+      configuration: getConfigurationRequirements(settings),
+      style: {
+        id: style.id,
+        name: style.name,
+        description: style.description ?? ""
+      },
+      shortcut: "Ctrl+Shift+Space / Command+Shift+Space"
+    };
+  }
+
+  async function retryRecentImprovementInternal() {
+    const session = sessions.get();
+    if (!canRunPopupRetry(session.status)) {
+      const error = new Error("Wait for the active dictation session to finish before retrying.");
+      error.code = "DICTATION_BUSY";
+      throw error;
+    }
+
+    const recentResult = await recentResults.load();
+    if (!recentResult?.rawTranscript) {
+      const error = new Error("No raw transcript is available to retry.");
+      error.code = "RECENT_RAW_TRANSCRIPT_MISSING";
+      throw error;
+    }
+
+    const improvement = await textImprovement.improveText({
+      text: recentResult.rawTranscript
+    });
+
+    return await recentResults.save({
+      ...recentResult,
+      finalText: improvement.text,
+      outputSource: improvement.source ?? "llm",
+      styleId: improvement.styleId ?? recentResult.styleId,
+      warning: null,
+      insertion: {
+        method: "popup-retry",
+        strategy: null,
+        targetKind: "popup",
+        textLength: improvement.text.length,
+        fallbackReason: null
+      },
+      completedAt: Date.now()
+    });
+  }
 }
 
 function isCancellableSessionForTab(session, tabId) {
@@ -151,4 +283,17 @@ function isCancellableSessionForTab(session, tabId) {
   return session.status !== DictationStatus.IDLE
     && session.status !== DictationStatus.SUCCESS
     && session.status !== DictationStatus.ERROR;
+}
+
+function canRunPopupRetry(status) {
+  return status === DictationStatus.IDLE
+    || status === DictationStatus.SUCCESS
+    || status === DictationStatus.ERROR;
+}
+
+function toMessageError(error, fallbackMessage) {
+  return {
+    code: error?.code || "RUNTIME_REQUEST_FAILED",
+    message: error?.message || fallbackMessage
+  };
 }

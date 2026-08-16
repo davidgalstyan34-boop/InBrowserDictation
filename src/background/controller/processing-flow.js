@@ -15,6 +15,7 @@ import {
  */
 export function createProcessingFlow({
   content,
+  recentResults = null,
   speechToText,
   textImprovement,
   sessions
@@ -109,7 +110,20 @@ export function createProcessingFlow({
     }
 
     const completedSession = sessions.markInsertionDone(insertionResponse.insertion);
+    await saveRecentResult(completedSession);
     await showInsertionCompleteState(content, completedSession);
+  }
+
+  async function saveRecentResult(session) {
+    if (!recentResults?.saveFromSession) {
+      return;
+    }
+
+    try {
+      await recentResults.saveFromSession(session);
+    } catch (error) {
+      console.warn("[In-Browser Dictation] Could not save recent result.", error);
+    }
   }
 }
 

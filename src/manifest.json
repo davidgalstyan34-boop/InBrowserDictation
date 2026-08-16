@@ -3,6 +3,10 @@
   "name": "In-Browser Dictation",
   "version": "0.1.0",
   "description": "Shortcut-driven dictation with later STT, LLM rewriting, and safe insertion.",
+  "action": {
+    "default_title": "In-Browser Dictation",
+    "default_popup": "popup/popup.html"
+  },
   "permissions": [
     "storage",
     "offscreen",

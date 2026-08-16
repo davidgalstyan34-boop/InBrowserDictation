@@ -55,11 +55,14 @@ Options page:
 
 - Stores STT and LLM keys.
 - Stores default style.
-- Later: custom styles and validation helpers.
+- Creates, edits, deletes, and selects custom rewrite styles.
+- Shows validation, key readiness, and style-dependent provider requirements.
 
 Popup:
 
-- P1 only. It should reflect state and expose convenience controls, not be required for normal usage.
+- Reflects current status, selected style, and shortcut.
+- Provides optional start/stop, latest-result copy, raw-transcript copy, retry rewrite, and settings access.
+- Remains secondary; normal usage does not require opening it.
 
 Background source layout:
 
@@ -112,7 +115,10 @@ Important message families:
 - `content.showState`: update overlay.
 - `content.insertText`: insert final text into the captured target or copy it to the clipboard.
 - `runtime.getState`: options/popup can inspect current service-worker state.
+- `runtime.getPopupState`: popup-only state including the latest recoverable result text.
 - `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result.
+- `runtime.toggleDictation`: popup entrypoint into the same policy as the keyboard command.
+- `runtime.retryRecentImprovement`: rerun LLM improvement from the stored latest raw transcript.
 - `offscreen.getRecordingState`: recover an active recorder after service-worker suspension.
 - `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
 - `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
@@ -186,9 +192,9 @@ For `contenteditable`:
 
 - store editable root reference;
 - clone the current DOM `Range` when it belongs to the editable root;
-- insert text through range operations;
-- dispatch `beforeinput`/`input` where practical.
-- Phase 5 currently inserts a text node at the captured range; richer editor adapters are P1.
+- capture selection-owned editors even when the active element is not itself the editor;
+- try the browser editor `insertText` command first;
+- fall back to range operations with `beforeinput`/`input` dispatch where practical.
 
 Changed focus:
 
@@ -267,9 +273,9 @@ Minimal settings:
 }
 ```
 
-Built-in styles are code-defined and versioned. Custom styles are P1.
+Built-in styles are code-defined and versioned. Custom styles are stored as normalized records with generated stable ids, display names, optional descriptions, and rewrite instructions. Built-ins remain code-defined and keep priority over custom ids.
 
-Recent result is P1 and should store only the latest successful transcript unless the user explicitly asks for history.
+The latest successful result is stored temporarily in `chrome.storage.session`. It includes the final text, raw transcript, style id, insertion metadata, and timestamps. It does not build a history.
 
 ## 11. UI Surfaces
 
@@ -286,12 +292,16 @@ Options:
 - masked API keys;
 - key readiness feedback and show/hide controls;
 - default style selector;
+- custom style management;
 - style-dependent Gemini requirement messaging;
 - validation and save feedback.
 
 Popup:
 
-- P1 convenience only.
+- status, style, shortcut, start/stop;
+- latest final result display and copy;
+- raw transcript copy;
+- retry rewrite from the latest raw transcript.
 
 ## 12. Security and Privacy
 
@@ -302,6 +312,7 @@ Popup:
 - Be explicit that audio goes to STT and transcript text goes to LLM.
 - Gemini free-tier content may be used to improve Google products; use paid-tier Gemini credentials or a backend proxy for stricter data handling.
 - Keep transcript and improved text out of logs and public runtime state snapshots.
+- Expose latest result text only through the explicit popup state/recovery message.
 - Keep host permissions and Chrome permissions minimal.
 
 ## 13. Testing
@@ -350,19 +361,10 @@ P0 vertical path:
 4. Text improvement: LLM improvement, built-in styles, raw transcript fallback.
 5. Insertion: target capture, safe insertion, contenteditable, clipboard fallback.
 6. Product feedback: overlay and settings polish.
-
-P1 after stable P0:
-
-- custom styles;
-- recent result;
-- popup;
-- richer editor compatibility;
-- focused unit tests.
+7. P1 differentiation: custom styles, latest-result recovery, popup controls, retry rewrite, richer editor compatibility, and focused unit tests.
 
 Drop first if schedule slips:
 
-- popup;
-- custom styles;
-- recent result;
+- full STT/audio retry;
 - advanced rich-editor adapters;
 - visual polish beyond clear state feedback.

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>In-Browser Dictation</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div>
+          <h1>Dictation</h1>
+          <p id="status-line">Loading</p>
+        </div>
+        <span id="status-pill" class="status-pill" data-tone="muted">Ready</span>
+      </header>
+
+      <section class="summary-section" aria-label="Current dictation state">
+        <div class="summary-row">
+          <span>Status</span>
+          <strong id="session-status">Loading</strong>
+        </div>
+        <div class="summary-row">
+          <span>Style</span>
+          <strong id="style-name">Loading</strong>
+        </div>
+        <div class="summary-row">
+          <span>Shortcut</span>
+          <strong id="shortcut-label">Ctrl+Shift+Space</strong>
+        </div>
+      </section>
+
+      <div class="action-row">
+        <button id="toggle-button" type="button" class="primary-action">Start Dictation</button>
+        <button id="options-button" type="button" class="secondary-action">Settings</button>
+      </div>
+
+      <section class="result-section" aria-labelledby="result-heading">
+        <div class="result-heading">
+          <h2 id="result-heading">Last Result</h2>
+          <span id="result-meta">None</span>
+        </div>
+        <textarea id="recent-result" readonly spellcheck="false" rows="7" placeholder="No recent dictation yet."></textarea>
+        <div class="result-actions">
+          <button id="copy-final-button" type="button" class="secondary-action">Copy</button>
+          <button id="copy-raw-button" type="button" class="secondary-action">Copy Raw</button>
+          <button id="retry-button" type="button" class="secondary-action">Retry Rewrite</button>
+        </div>
+      </section>
+
+      <p id="popup-status" class="popup-status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

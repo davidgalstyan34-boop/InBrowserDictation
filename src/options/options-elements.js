@@ -18,6 +18,14 @@ export function getOptionsElements(documentRef = document) {
     defaultStyleError: queryRequired(documentRef, "#default-style-error"),
     styleDescription: queryRequired(documentRef, "#style-description"),
     styleProcessingNote: queryRequired(documentRef, "#style-processing-note"),
+    customStyleList: queryRequired(documentRef, "#custom-style-list"),
+    customStyleId: queryRequired(documentRef, "#custom-style-id"),
+    customStyleName: queryRequired(documentRef, "#custom-style-name"),
+    customStyleInstructions: queryRequired(documentRef, "#custom-style-instructions"),
+    customStyleError: queryRequired(documentRef, "#custom-style-error"),
+    customStyleSave: queryRequired(documentRef, "#custom-style-save"),
+    customStyleNew: queryRequired(documentRef, "#custom-style-new"),
+    customStyleDelete: queryRequired(documentRef, "#custom-style-delete"),
     saveStatus: queryRequired(documentRef, "#save-status"),
     secretToggleButtons: [...documentRef.querySelectorAll("[data-toggle-secret]")]
   };
