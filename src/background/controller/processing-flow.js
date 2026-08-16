@@ -37,12 +37,16 @@ export function createProcessingFlow({
   /**
    * Transcribes stopped audio, improves text, and inserts final output.
    */
-  async function processStoppedRecording(audio) {
+  async function processStoppedRecording(sessionId, audio) {
     const requestController = new AbortController();
     activeRequestController = requestController;
 
     try {
-      const transcribingSession = sessions.markTranscribing(audio);
+      const transcribingSession = sessions.markTranscribing(sessionId, audio);
+      if (!transcribingSession) {
+        return;
+      }
+
       await showTranscribingState(content, transcribingSession);
 
       const transcription = await speechToText.transcribe({
@@ -51,7 +55,11 @@ export function createProcessingFlow({
       });
       throwIfProcessingAborted(requestController.signal);
 
-      const improvingSession = sessions.markTranscriptReady(transcription);
+      const improvingSession = sessions.markTranscriptReady(sessionId, transcription);
+      if (!improvingSession) {
+        return;
+      }
+
       await showImprovingState(content, improvingSession);
       await improveTextForCurrentSession(improvingSession, requestController.signal);
     } finally {
@@ -74,7 +82,7 @@ export function createProcessingFlow({
       });
       throwIfProcessingAborted(signal);
 
-      insertingSession = sessions.markImprovedTextReady(improvement);
+      insertingSession = sessions.markImprovedTextReady(session.id, improvement);
 
     } catch (error) {
       if (signal?.aborted) {
@@ -92,18 +100,27 @@ export function createProcessingFlow({
         requestShape: error.requestShape
       });
 
-      insertingSession = sessions.markRawTranscriptFallback(error);
+      insertingSession = sessions.markRawTranscriptFallback(session.id, error);
+    }
+
+    if (!insertingSession) {
+      return;
     }
 
     await showInsertionReadyState(content, insertingSession);
     throwIfProcessingAborted(signal);
-    await insertOutputTextForCurrentSession(insertingSession);
+
+    // Store the result before attempting insertion. Insertion can fail in ways
+    // that cannot be retried from the page, and nothing else in the extension
+    // holds this text: overlays deliberately never echo it.
+    const savedResult = await saveRecentResult(insertingSession);
+    await insertOutputTextForCurrentSession(insertingSession, Boolean(savedResult));
   }
 
   /**
    * Sends private final text to the captured page target and completes insertion.
    */
-  async function insertOutputTextForCurrentSession(session) {
+  async function insertOutputTextForCurrentSession(session, isRecoverable) {
     const insertionResponse = await content.insertText(
       session.tabId,
       session.id,
@@ -111,25 +128,45 @@ export function createProcessingFlow({
     );
 
     if (!insertionResponse?.ok) {
-      throw toError(insertionResponse?.error, "Text could not be inserted.");
+      throw withRecoveryHint(
+        toError(insertionResponse?.error, "Text could not be inserted."),
+        isRecoverable
+      );
     }
 
-    const completedSession = sessions.markInsertionDone(insertionResponse.insertion);
+    const completedSession = sessions.markInsertionDone(session.id, insertionResponse.insertion);
+    if (!completedSession) {
+      return;
+    }
+
     await saveRecentResult(completedSession);
     await showInsertionCompleteState(content, completedSession);
   }
 
   async function saveRecentResult(session) {
     if (!recentResults?.saveFromSession) {
-      return;
+      return null;
     }
 
     try {
-      await recentResults.saveFromSession(session);
+      return await recentResults.saveFromSession(session);
     } catch (error) {
       console.warn("[In-Browser Dictation] Could not save recent result.", error);
+      return null;
     }
   }
+}
+
+/**
+ * Tells the user where the text went when it could not reach the page.
+ */
+function withRecoveryHint(error, isRecoverable) {
+  if (!isRecoverable) {
+    return error;
+  }
+
+  error.message = `${error.message} Open the extension popup to copy it.`;
+  return error;
 }
 
 function throwIfProcessingAborted(signal) {

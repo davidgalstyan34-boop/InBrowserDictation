@@ -116,14 +116,15 @@ Important message families:
 - `content.insertText`: insert final text into the captured target or copy it to the clipboard.
 - `runtime.getState`: options/popup can inspect current service-worker state.
 - `runtime.getPopupState`: popup-only state including the latest recoverable result text.
-- `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result.
+- `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result. The payload echoes the session's tab id so a suspended service worker can rebuild the session instead of discarding a grant.
 - `runtime.toggleDictation`: popup entrypoint into the same policy as the keyboard command.
+- `runtime.cancelDictation`: popup entrypoint that abandons a session stuck in a non-toggleable state.
 - `runtime.retryRecentImprovement`: rerun LLM improvement from the stored latest raw transcript.
 - `offscreen.getRecordingState`: recover an active recorder after service-worker suspension.
 - `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
 - `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
 
-Every session-bound message carries `sessionId`. Receivers ignore stale session IDs.
+Every session-bound message carries `sessionId`. Receivers ignore stale session IDs, and the background session store rejects mutations whose `sessionId` no longer matches the current session so a late callback cannot advance its successor.
 
 ## 6. Session State Machine
 
@@ -177,9 +178,21 @@ STARTING(target captured) -> WAITING_FOR_MICROPHONE -> RECORDING
 
 Chrome requires the first microphone grant to come from a visible extension page. The service worker opens `permissions/microphone.html`, that page calls `getUserMedia({ audio: true })`, stops the test stream immediately, then reports the result back to the service worker.
 
+Two failure modes are handled explicitly, because both otherwise park the session in `WAITING_FOR_MICROPHONE` with no way out:
+
+- Closing the window without choosing reports a `MICROPHONE_PERMISSION_DISMISSED` denial from `pagehide`, so the session fails instead of waiting forever.
+- The service worker can be suspended while the user reads Chrome's prompt, which discards the in-memory session. A granted result whose session id is unknown, arriving while the store is idle, rebuilds the session from the echoed session id and tab id and continues into recording; the content script still holds the captured target under that same session id. A dismissed result in the same situation is ignored, because nothing is stuck.
+
+No state is left waiting indefinitely:
+
+- A watchdog fails any session that stays in `STARTING`, `WAITING_FOR_MICROPHONE`, `STOPPING`, `TRANSCRIBING`, `IMPROVING`, or `INSERTING` past a per-state deadline. `RECORDING` is exempt because a long dictation is legitimate. A plain timer suffices: it only has to cover hangs while the worker is alive, and a suspended worker discards the session anyway.
+- The popup exposes an explicit cancel for any busy state, since the shortcut only reports "busy" there.
+
 ## 7. Target Capture and Insertion Design
 
 Capture happens in the content script immediately after the start command reaches the active tab.
+
+A target the content script rejects on purpose (`kind: "blocked"`) fails the session before recording starts, so no audio is captured and nothing reaches a provider or the clipboard. That is distinct from "nothing editable was focused" (`kind: "none"`), which still records and falls back to the clipboard.
 
 For `input` and `textarea`:
 
@@ -280,7 +293,9 @@ Minimal settings:
 
 Built-in styles are code-defined and versioned. Custom styles are stored as normalized records with generated stable ids, display names, optional descriptions, and rewrite instructions. Built-ins remain code-defined and keep priority over custom ids.
 
-The latest successful result is stored temporarily in `chrome.storage.session`. It includes the final text, raw transcript, style id, insertion metadata, and timestamps. It does not build a history.
+The latest result is stored temporarily in `chrome.storage.session`. It includes the final text, raw transcript, style id, insertion metadata, and timestamps. It does not build a history.
+
+The record is written as soon as final text exists, before insertion is attempted, and rewritten afterwards with insertion metadata. Insertion is the step most likely to fail irrecoverably — a detached target plus a clipboard write the browser refuses — and nothing else holds that text, because overlays deliberately never echo it. Saving only on success would keep a record exactly when it is least needed.
 
 ## 11. UI Surfaces
 

@@ -10,10 +10,10 @@ describe("session store", () => {
     const started = sessions.start({ id: "session-1", tabId: 10, startedAt: 1000 });
     assert.equal(started.status, DictationStatus.STARTING);
 
-    const prepared = sessions.markTargetReady({ kind: "textarea" });
+    const prepared = sessions.markTargetReady("session-1", { kind: "textarea" });
     assert.equal(prepared.status, DictationStatus.STARTING);
 
-    const recording = sessions.markRecording({ startedAt: 1100, tabId: 10, mimeType: "audio/webm" });
+    const recording = sessions.markRecording("session-1", { startedAt: 1100, tabId: 10, mimeType: "audio/webm" });
     assert.equal(recording.status, DictationStatus.RECORDING);
     assert.equal(recording.recording.tabId, 10);
     assert.deepEqual(sessions.toPublicSession().recording, {
@@ -22,7 +22,7 @@ describe("session store", () => {
       mimeType: "audio/webm"
     });
 
-    const stopping = sessions.markStopping();
+    const stopping = sessions.markStopping("session-1");
     assert.equal(stopping.status, DictationStatus.STOPPING);
   });
 
@@ -30,11 +30,11 @@ describe("session store", () => {
     const sessions = createSessionStore();
 
     sessions.start({ id: "session-4", tabId: 44, startedAt: 1000 });
-    sessions.markTargetReady({ kind: "textarea" });
-    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
-    sessions.markStopping();
+    sessions.markTargetReady("session-4", { kind: "textarea" });
+    sessions.markRecording("session-4", { startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping("session-4");
 
-    const transcribing = sessions.markTranscribing({
+    const transcribing = sessions.markTranscribing("session-4", {
       mimeType: "audio/webm",
       sizeBytes: 4096,
       durationMs: 2000,
@@ -45,7 +45,7 @@ describe("session store", () => {
     assert.equal(transcribing.status, DictationStatus.TRANSCRIBING);
     assert.equal(transcribing.audio.dataUrl, "data:audio/webm;base64,abc");
 
-    const improving = sessions.markTranscriptReady({
+    const improving = sessions.markTranscriptReady("session-4", {
       transcript: "hello world",
       providerMeta: {
         provider: "deepgram",
@@ -64,7 +64,7 @@ describe("session store", () => {
     });
     assert.equal("transcript" in sessions.toPublicSession().transcription, false);
 
-    const inserting = sessions.markImprovedTextReady({
+    const inserting = sessions.markImprovedTextReady("session-4", {
       text: "Hello world.",
       source: "llm",
       styleId: "default",
@@ -87,7 +87,7 @@ describe("session store", () => {
     });
     assert.equal("text" in sessions.toPublicSession().outputText, false);
 
-    const completed = sessions.markInsertionDone({
+    const completed = sessions.markInsertionDone("session-4", {
       method: "target",
       targetKind: "textarea",
       textLength: 12
@@ -107,24 +107,24 @@ describe("session store", () => {
     const sessions = createSessionStore();
 
     sessions.start({ id: "session-5", tabId: 55, startedAt: 1000 });
-    sessions.markTargetReady({ kind: "textarea" });
-    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
-    sessions.markStopping();
-    sessions.markTranscribing({
+    sessions.markTargetReady("session-5", { kind: "textarea" });
+    sessions.markRecording("session-5", { startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping("session-5");
+    sessions.markTranscribing("session-5", {
       mimeType: "audio/webm",
       sizeBytes: 4096,
       durationMs: 2000,
       capturedAt: 3000,
       dataUrl: "data:audio/webm;base64,abc"
     });
-    sessions.markTranscriptReady({
+    sessions.markTranscriptReady("session-5", {
       transcript: "raw transcript",
       providerMeta: {
         provider: "deepgram"
       }
     });
 
-    const inserting = sessions.markRawTranscriptFallback({
+    const inserting = sessions.markRawTranscriptFallback("session-5", {
       code: "LLM_RATE_LIMITED",
       message: "Gemini rate limit reached."
     }, 3300);
@@ -144,7 +144,7 @@ describe("session store", () => {
       message: "Gemini rate limit reached."
     });
 
-    const completed = sessions.markInsertionDone({
+    const completed = sessions.markInsertionDone("session-5", {
       method: "clipboard",
       strategy: "async-clipboard",
       targetKind: "textarea",
@@ -182,9 +182,9 @@ describe("session store", () => {
   it("can pause startup while microphone permission is requested visibly", () => {
     const sessions = createSessionStore();
     sessions.start({ id: "session-3", tabId: 33 });
-    sessions.markTargetReady({ kind: "input" });
+    sessions.markTargetReady("session-3", { kind: "input" });
 
-    const waiting = sessions.markMicrophonePermissionNeeded();
+    const waiting = sessions.markMicrophonePermissionNeeded("session-3");
 
     assert.equal(waiting.status, DictationStatus.WAITING_FOR_MICROPHONE);
     assert.equal(waiting.target.kind, "input");
@@ -192,51 +192,80 @@ describe("session store", () => {
 
   it("rejects invalid lifecycle mutations before changing session data", () => {
     const sessions = createSessionStore();
+    sessions.start({ id: "session-invalid", tabId: 55 });
 
     assert.throws(
-      () => sessions.markStopping(),
+      () => sessions.markStopping("session-invalid"),
       {
         code: "INVALID_SESSION_TRANSITION",
-        status: DictationStatus.IDLE,
+        status: DictationStatus.STARTING,
         event: DictationEvent.STOP_REQUESTED
       }
     );
 
-    assert.equal(sessions.get().status, DictationStatus.IDLE);
+    assert.equal(sessions.get().status, DictationStatus.STARTING);
     assert.equal(sessions.get().recording, null);
+  });
+
+  it("ignores mutations from a superseded session", () => {
+    const sessions = createSessionStore();
+    sessions.start({ id: "session-old", tabId: 70 });
+    sessions.start({ id: "session-new", tabId: 71 });
+
+    const stale = withMutedConsole(() => sessions.markTargetReady("session-old", {
+      kind: "textarea"
+    }));
+
+    assert.equal(stale, null);
+    assert.equal(sessions.get().id, "session-new");
+    assert.equal(sessions.get().target, null);
+    assert.equal(sessions.get().status, DictationStatus.STARTING);
+  });
+
+  it("ignores mutations aimed at an idle store", () => {
+    const sessions = createSessionStore();
+
+    const stale = withMutedConsole(() => sessions.fail("session-gone", {
+      code: "LATE_FAILURE",
+      message: "Nothing is running."
+    }));
+
+    assert.equal(stale, null);
+    assert.equal(sessions.get().status, DictationStatus.IDLE);
+    assert.equal(sessions.get().error, null);
   });
 
   it("keeps terminal sessions stable when late failures arrive", () => {
     const sessions = createSessionStore();
 
     sessions.start({ id: "session-terminal", tabId: 66 });
-    sessions.markTargetReady({ kind: "textarea" });
-    sessions.markRecording({ startedAt: 1100, mimeType: "audio/webm" });
-    sessions.markStopping();
-    sessions.markTranscribing({
+    sessions.markTargetReady("session-terminal", { kind: "textarea" });
+    sessions.markRecording("session-terminal", { startedAt: 1100, mimeType: "audio/webm" });
+    sessions.markStopping("session-terminal");
+    sessions.markTranscribing("session-terminal", {
       mimeType: "audio/webm",
       sizeBytes: 4096,
       durationMs: 2000,
       capturedAt: 3000,
       dataUrl: "data:audio/webm;base64,abc"
     });
-    sessions.markTranscriptReady({
+    sessions.markTranscriptReady("session-terminal", {
       transcript: "hello world",
       providerMeta: { provider: "deepgram" }
     });
-    sessions.markImprovedTextReady({
+    sessions.markImprovedTextReady("session-terminal", {
       text: "Hello world.",
       source: "llm",
       styleId: "default",
       providerMeta: { provider: "gemini" }
     });
-    const completed = sessions.markInsertionDone({
+    const completed = sessions.markInsertionDone("session-terminal", {
       method: "target",
       targetKind: "textarea",
       textLength: 12
     });
 
-    const afterLateFailure = sessions.fail({
+    const afterLateFailure = sessions.fail("session-terminal", {
       code: "LATE_FAILURE",
       message: "A late failure should not overwrite success."
     });
@@ -246,3 +275,14 @@ describe("session store", () => {
     assert.equal(afterLateFailure.error, null);
   });
 });
+
+function withMutedConsole(action) {
+  const originalWarn = console.warn;
+  console.warn = () => {};
+
+  try {
+    return action();
+  } finally {
+    console.warn = originalWarn;
+  }
+}

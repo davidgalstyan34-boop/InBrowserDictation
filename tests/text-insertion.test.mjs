@@ -209,6 +209,69 @@ describe("content text insertion", () => {
     assert.equal(selectedRanges.includes(range), true);
   });
 
+  it("reports a coded fallback reason when the target throws a DOMException", async () => {
+    let copiedText = "";
+    const element = createTextControl({ value: "hello" });
+    element.dispatchEvent = () => {
+      // DOMException carries a legacy numeric `code` (InvalidStateError is 11),
+      // which must not survive into the reported fallback reason.
+      throw new DOMException("The element is in an invalid state.", "InvalidStateError");
+    };
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "input",
+      element,
+      selectionStart: 5,
+      selectionEnd: 5,
+      valueLength: 5
+    }, "final text", {
+      clipboard: {
+        writeText: async (text) => {
+          copiedText = text;
+        }
+      }
+    });
+
+    assert.equal(copiedText, "final text");
+    assert.equal(result.fallbackReason, "INSERTION_FAILED");
+  });
+
+  it("never copies text captured against a blocked field", async () => {
+    let clipboardCalls = 0;
+
+    await assert.rejects(
+      insertTextIntoCapturedTarget({
+        kind: "blocked",
+        reason: "password inputs are never dictation targets"
+      }, "secret text", {
+        clipboard: {
+          writeText: async () => {
+            clipboardCalls += 1;
+          }
+        }
+      }),
+      { code: "INSERTION_TARGET_BLOCKED" }
+    );
+
+    assert.equal(clipboardCalls, 0);
+  });
+
+  it("still copies when no editable target was focused", async () => {
+    let copiedText = "";
+
+    const result = await insertTextIntoCapturedTarget({ kind: "none" }, "final text", {
+      clipboard: {
+        writeText: async (text) => {
+          copiedText = text;
+        }
+      }
+    });
+
+    assert.equal(copiedText, "final text");
+    assert.equal(result.method, "clipboard");
+    assert.equal(result.fallbackReason, "INSERTION_TARGET_MISSING");
+  });
+
   it("fails when neither target insertion nor clipboard fallback is available", async () => {
     await assert.rejects(
       insertTextIntoCapturedTarget({ kind: "none" }, "text", {

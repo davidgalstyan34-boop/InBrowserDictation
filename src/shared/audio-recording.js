@@ -1,3 +1,5 @@
+import { createCodedError, isCodedError } from "./extension-error.js";
+
 const AUDIO_MIME_TYPE_CANDIDATES = Object.freeze([
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -60,19 +62,17 @@ export function describeAudioMetadata(audio) {
  * Creates an Error with a stable extension-specific code.
  */
 export function createRecordingError(code, message, cause = null) {
-  const error = new Error(message);
-  error.code = code;
-  if (cause) {
-    error.cause = cause;
-  }
-  return error;
+  return createCodedError(code, message, cause);
 }
 
 /**
  * Maps browser/recorder failures to user-facing error codes and messages.
+ *
+ * The result is a plain serializable object because the offscreen document
+ * reports failures to the service worker through extension messaging.
  */
 export function normalizeRecordingError(error) {
-  if (error?.code && error?.message) {
+  if (isCodedError(error)) {
     return {
       code: error.code,
       message: error.message

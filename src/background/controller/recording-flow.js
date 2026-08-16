@@ -1,5 +1,6 @@
 import { isMicrophonePermissionError } from "../../shared/audio-recording.js";
 import { DictationStatus } from "../../shared/dictation-state.js";
+import { createCodedError } from "../../shared/extension-error.js";
 import { toError } from "../utils/errors.js";
 import {
   showMicrophoneAccessGrantedState,
@@ -61,7 +62,10 @@ export function createRecordingFlow({
       throw toError(prepareResponse?.error, "The page could not prepare for dictation.");
     }
 
-    return sessions.markTargetReady(prepareResponse.target ?? null);
+    const target = prepareResponse.target ?? null;
+    assertTargetAcceptsDictation(target);
+
+    return sessions.markTargetReady(session.id, target);
   }
 
   /**
@@ -114,29 +118,29 @@ export function createRecordingFlow({
   /**
    * Requests microphone permission from a visible extension page.
    */
-  async function requestMicrophonePermission() {
-    const session = sessions.markMicrophonePermissionNeeded();
+  async function requestMicrophonePermission(sessionId) {
+    const session = sessions.markMicrophonePermissionNeeded(sessionId);
+    if (!session) {
+      return;
+    }
 
     await showMicrophonePermissionNeededState(content, session);
-    await microphonePermission.openPermissionWindow(session.id);
+    await microphonePermission.openPermissionWindow(session.id, session.tabId);
   }
 
   /**
    * Retries recording after the visible permission page grants microphone access.
    */
   async function processMicrophonePermissionResult(message) {
-    const session = sessions.get();
+    const session = resolvePermissionSession(message);
 
-    if (
-      !message.sessionId
-        || message.sessionId !== session.id
-        || session.status !== DictationStatus.WAITING_FOR_MICROPHONE
-    ) {
+    if (!session) {
       return { ok: false, ignored: true };
     }
 
     if (!message.payload.granted) {
       await failSession(
+        session.id,
         message.payload.error?.code || "MICROPHONE_PERMISSION_DENIED",
         message.payload.error?.message || "Microphone permission was denied."
       );
@@ -149,9 +153,52 @@ export function createRecordingFlow({
       return { ok: true };
     } catch (error) {
       await recorder.close();
-      await failSession(error.code || "DICTATION_START_FAILED", error.message);
+      await failSession(session.id, error.code || "DICTATION_START_FAILED", error.message);
       return { ok: false };
     }
+  }
+
+  /**
+   * Finds the session a permission result belongs to, rebuilding it if needed.
+   *
+   * The usual case is the session still parked in WAITING_FOR_MICROPHONE. The
+   * other case is an MV3 restart: the worker can be suspended while the user
+   * reads Chrome's prompt, which loses the in-memory session. The result echoes
+   * back the session id and tab id, and the content script still holds the
+   * captured target under that same session id, so the session is rebuilt
+   * rather than dropped. A result for a *different* live session is still
+   * ignored.
+   */
+  function resolvePermissionSession(message) {
+    const session = sessions.get();
+
+    if (!message.sessionId) {
+      return null;
+    }
+
+    if (message.sessionId === session.id) {
+      return session.status === DictationStatus.WAITING_FOR_MICROPHONE ? session : null;
+    }
+
+    // Only a granted permission is worth rebuilding for. If the worker restarted
+    // and the user dismissed the window, nothing is wedged and resurrecting the
+    // session would only show an error for work the user already abandoned.
+    if (session.status !== DictationStatus.IDLE || message.payload?.granted !== true) {
+      return null;
+    }
+
+    const tabId = message.payload?.tabId;
+    if (!Number.isInteger(tabId)) {
+      return null;
+    }
+
+    console.info("[In-Browser Dictation] Rebuilding a session lost to worker suspension.", {
+      sessionId: message.sessionId,
+      tabId
+    });
+
+    sessions.start({ id: message.sessionId, tabId });
+    return sessions.markMicrophonePermissionNeeded(message.sessionId);
   }
 
   /**
@@ -165,7 +212,16 @@ export function createRecordingFlow({
       throw toError(recordingResponse?.error, "Audio recording could not start.");
     }
 
-    const recordingSession = sessions.markRecording(recordingResponse.recording ?? null);
+    const recordingSession = sessions.markRecording(
+      session.id,
+      recordingResponse.recording ?? null
+    );
+    if (!recordingSession) {
+      // A newer session replaced this one while the recorder was starting.
+      await recorder.stop(session.id).catch(() => {});
+      return;
+    }
+
     await showRecordingState(content, recordingSession);
   }
 
@@ -191,16 +247,36 @@ export function createRecordingFlow({
   /**
    * Handles recorder startup failures that need recording-specific recovery.
    */
-  async function handleStartFailure(error) {
+  async function handleStartFailure(sessionId, error) {
     await closeRecorder();
 
     if (!isMicrophonePermissionError(error)) {
       return false;
     }
 
-    await requestMicrophonePermission();
+    await requestMicrophonePermission(sessionId);
     return true;
   }
+}
+
+/**
+ * Refuses to record for a target the content script has ruled out.
+ *
+ * A blocked target is a deliberate refusal (password and hidden inputs), not a
+ * missing one. Recording anyway would send that audio to the STT provider and
+ * the transcript to the LLM provider, and the final text would then reach the
+ * clipboard through the no-target fallback. The session stops here instead, so
+ * nothing is captured at all.
+ */
+function assertTargetAcceptsDictation(target) {
+  if (target?.kind !== "blocked") {
+    return;
+  }
+
+  throw createCodedError(
+    "DICTATION_TARGET_BLOCKED",
+    target.reason || "This field cannot be used for dictation."
+  );
 }
 
 function shouldAskRecorderToStop(status) {

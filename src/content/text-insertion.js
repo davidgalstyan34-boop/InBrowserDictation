@@ -1,3 +1,5 @@
+import { createCodedError, isCodedError } from "../shared/extension-error.js";
+
 /**
  * Inserts final dictation output into the target captured at session start.
  *
@@ -17,6 +19,7 @@ export async function insertTextIntoCapturedTarget(target, text, {
   InputEventCtor = globalThis.InputEvent
 } = {}) {
   const insertionText = normalizeInsertionText(text);
+  assertTargetAllowsFallback(target);
   let targetError = null;
 
   try {
@@ -55,8 +58,26 @@ export async function insertTextIntoCapturedTarget(target, text, {
   }
 }
 
+/**
+ * Rejects targets whose capture was a refusal rather than a miss.
+ *
+ * `none` means "nothing editable was focused", and copying to the clipboard is
+ * a helpful answer. `blocked` means the field was rejected on purpose, so the
+ * clipboard is the one place the text must not go.
+ */
+function assertTargetAllowsFallback(target) {
+  if (target?.kind !== "blocked") {
+    return;
+  }
+
+  throw createInsertionError(
+    "INSERTION_TARGET_BLOCKED",
+    target.reason || "This field cannot be used for dictation."
+  );
+}
+
 function insertIntoCapturedTarget(target, text, environment) {
-  if (!target || target.kind === "none" || target.kind === "blocked") {
+  if (!target || target.kind === "none") {
     throw createInsertionError(
       "INSERTION_TARGET_MISSING",
       "No editable target is available for insertion."
@@ -396,16 +417,11 @@ function getDefaultClipboard() {
 }
 
 function createInsertionError(code, message, cause = null) {
-  const error = new Error(message);
-  error.code = code;
-  if (cause) {
-    error.cause = cause;
-  }
-  return error;
+  return createCodedError(code, message, cause);
 }
 
 function normalizeInsertionError(error) {
-  if (error?.code && error?.message) {
+  if (isCodedError(error)) {
     return error;
   }
 

@@ -15,14 +15,53 @@ export function createCommandFlow({
   cryptoApi,
   failSession
 }) {
+  // Guards against overlapping shortcut presses. Every toggle branch awaits
+  // before it claims the session store, so two presses delivered in the same
+  // tick would otherwise both observe IDLE and start competing sessions.
+  let decidingToggle = false;
+
   return {
     handleToggleCommand
   };
 
   /**
    * Implements the user-facing shortcut toggle.
+   *
+   * A press that arrives while a previous press is still deciding is dropped
+   * rather than queued: queueing would fire a surprise session once a long
+   * pipeline finished, which is not what a user pressing a toggle expects.
    */
   async function handleToggleCommand({ tab } = {}) {
+    if (decidingToggle) {
+      await reportOverlappingToggle();
+      return;
+    }
+
+    decidingToggle = true;
+
+    try {
+      await runToggleCommand({ tab });
+    } finally {
+      decidingToggle = false;
+    }
+  }
+
+  /**
+   * Gives feedback for a press that landed while another press was deciding.
+   */
+  async function reportOverlappingToggle() {
+    const session = sessions.get();
+    if (!session.id) {
+      // The competing press has not claimed a session yet, so there is nothing
+      // meaningful to show on the page.
+      console.info("[In-Browser Dictation] Ignoring an overlapping toggle press.");
+      return;
+    }
+
+    await showBusyState(content, session);
+  }
+
+  async function runToggleCommand({ tab }) {
     if (sessions.get().status === DictationStatus.IDLE && await recordingFlow.recoverActiveRecording()) {
       await stopDictationSession();
       return;
@@ -73,21 +112,25 @@ export function createCommandFlow({
     });
 
     if (!tab?.id) {
-      await failSession("NO_ACTIVE_TAB", "No active tab is available for dictation.");
+      await failSession(session.id, "NO_ACTIVE_TAB", "No active tab is available for dictation.");
       return;
     }
 
     try {
       const preparedSession = await recordingFlow.prepareSessionForRecording(session, tab.id);
+      if (!preparedSession) {
+        return;
+      }
+
       await recordingFlow.startRecordingForSession(preparedSession);
     } catch (error) {
       console.error("[In-Browser Dictation] Start failed.", error);
 
-      if (await recordingFlow.handleStartFailure(error)) {
+      if (await recordingFlow.handleStartFailure(session.id, error)) {
         return;
       }
 
-      await failSession(error.code || "DICTATION_START_FAILED", error.message);
+      await failSession(session.id, error.code || "DICTATION_START_FAILED", error.message);
     }
   }
 
@@ -95,7 +138,12 @@ export function createCommandFlow({
    * Stops the active recorder, then delegates audio processing and insertion.
    */
   async function stopDictationSession() {
-    const session = sessions.markStopping();
+    const activeSession = sessions.get();
+    const session = sessions.markStopping(activeSession.id);
+    if (!session) {
+      return;
+    }
+
     console.info("[In-Browser Dictation] Stopping session.", {
       sessionId: session.id,
       tabId: session.tabId
@@ -105,10 +153,10 @@ export function createCommandFlow({
 
     try {
       const audio = await recordingFlow.stopRecordingForSession(session);
-      await processingFlow.processStoppedRecording(audio);
+      await processingFlow.processStoppedRecording(session.id, audio);
     } catch (error) {
       console.error("[In-Browser Dictation] Stop failed.", error);
-      await failSession(error.code || "DICTATION_STOP_FAILED", error.message);
+      await failSession(session.id, error.code || "DICTATION_STOP_FAILED", error.message);
     } finally {
       await recordingFlow.closeRecorder();
     }

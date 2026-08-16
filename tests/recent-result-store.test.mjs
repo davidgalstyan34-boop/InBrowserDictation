@@ -7,6 +7,41 @@ import {
 } from "../src/background/session/recent-result-store.js";
 
 describe("recent result store", () => {
+  it("creates a recoverable result before insertion has been attempted", () => {
+    const result = createRecentResultFromSession({
+      id: "session-inserting",
+      status: DictationStatus.INSERTING,
+      transcription: { transcript: "raw transcript" },
+      outputText: {
+        text: "Final transcript.",
+        source: "llm",
+        styleId: "default"
+      },
+      insertion: null,
+      warning: null,
+      completedAt: 2000
+    }, () => 3000);
+
+    assert.equal(result.finalText, "Final transcript.");
+    assert.equal(result.rawTranscript, "raw transcript");
+    assert.equal(result.insertion, null);
+  });
+
+  it("ignores sessions that have not produced final text yet", () => {
+    assert.equal(createRecentResultFromSession({
+      id: "session-transcribing",
+      status: DictationStatus.TRANSCRIBING,
+      transcription: { transcript: "raw transcript" },
+      outputText: null
+    }), null);
+
+    assert.equal(createRecentResultFromSession({
+      id: "session-empty",
+      status: DictationStatus.INSERTING,
+      outputText: { text: "" }
+    }), null);
+  });
+
   it("creates a recoverable result from a successful private session", () => {
     const result = createRecentResultFromSession({
       id: "session-1",

@@ -65,6 +65,108 @@ describe("dictation controller", () => {
     });
   });
 
+  it("starts one session when the popup and the shortcut toggle at the same time", async () => {
+    await withMutedConsole(async () => {
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const sessionIds = [];
+      const chromeApi = createChromeApi({
+        tabMessages,
+        runtimeSendMessage: async (message) => {
+          runtimeMessages.push(message);
+          if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+            return {
+              ok: true,
+              recording: {
+                startedAt: 1000,
+                tabId: 99,
+                mimeType: "audio/webm"
+              }
+            };
+          }
+
+          throw new Error(`Unexpected runtime message: ${message.type}`);
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: {
+          randomUUID: () => {
+            const id = `session-race-${sessionIds.length + 1}`;
+            sessionIds.push(id);
+            return id;
+          }
+        }
+      });
+
+      // The popup path resolves the active tab first, so it reaches the session
+      // store one await later than the keyboard path. That difference is the
+      // window in which both entrypoints used to observe IDLE and start.
+      const popupToggle = sendRuntimeMessage(controller, MessageType.RUNTIME_TOGGLE_DICTATION);
+      const keyboardToggle = controller.handleCommand("toggle-dictation", { tab: { id: 99 } });
+      await Promise.all([popupToggle, keyboardToggle]);
+
+      assert.equal(sessionIds.length, 1);
+      assert.equal(
+        runtimeMessages.filter((message) => (
+          message.type === MessageType.OFFSCREEN_START_RECORDING
+        )).length,
+        1
+      );
+      assert.equal(
+        tabMessages.filter(({ message }) => (
+          message.type === MessageType.CONTENT_PREPARE_DICTATION
+        )).length,
+        1
+      );
+
+      const session = getPublicSession(controller);
+      assert.equal(session.status, DictationStatus.RECORDING);
+      assert.equal(session.id, "session-race-1");
+    });
+  });
+
+  it("refuses to record when the page reports a blocked field", async () => {
+    await withMutedConsole(async () => {
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const chromeApi = createChromeApi({
+        tabMessages,
+        prepareTarget: {
+          kind: "blocked",
+          reason: "password inputs are never dictation targets"
+        },
+        runtimeSendMessage: async (message) => {
+          runtimeMessages.push(message);
+          return { ok: true };
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: {
+          randomUUID: () => "session-blocked-target"
+        }
+      });
+
+      await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+
+      // No audio may be captured, so nothing can reach a provider or the clipboard.
+      assert.equal(
+        runtimeMessages.some((message) => (
+          message.type === MessageType.OFFSCREEN_START_RECORDING
+        )),
+        false
+      );
+
+      const session = getPublicSession(controller);
+      assert.equal(session.status, DictationStatus.ERROR);
+      assert.equal(session.error.code, "DICTATION_TARGET_BLOCKED");
+      assert.match(session.error.message, /password/i);
+    });
+  });
+
   it("recovers suspended recorder sessions against the original tab id", async () => {
     await withMutedConsole(async () => {
       const tabMessages = [];
@@ -654,6 +756,241 @@ describe("dictation controller", () => {
     });
   });
 
+  it("keeps the final text recoverable when insertion and clipboard both fail", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+
+      globalThis.fetch = async (url) => {
+        const href = String(url);
+        if (href.startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse("recovered transcript");
+        }
+
+        throw new Error(`Unexpected fetch URL: ${href}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          // Raw style keeps Gemini out of this test; the failure under test is
+          // insertion, not improvement.
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            defaultStyleId: "raw"
+          },
+          tabMessages,
+          insertTextResponse: {
+            ok: false,
+            error: {
+              code: "INSERTION_AND_CLIPBOARD_FAILED",
+              message: "Text could not be inserted or copied to the clipboard."
+            }
+          },
+          runtimeSendMessage: createRecordingRuntimeHandler([])
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-insertion-failed"
+          }
+        });
+
+        await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+        await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+
+        assert.equal(getPublicSession(controller).status, DictationStatus.ERROR);
+
+        // The transcript survived the failed insertion and is reachable.
+        const popupState = await sendRuntimeMessage(controller, MessageType.RUNTIME_GET_POPUP_STATE);
+        assert.equal(popupState.recentResult.finalText, "recovered transcript");
+        assert.equal(popupState.recentResult.rawTranscript, "recovered transcript");
+
+        // The page overlay says where the text went.
+        const failureState = tabMessages
+          .map(({ message }) => message)
+          .filter((message) => message.type === MessageType.CONTENT_SHOW_STATE)
+          .at(-1);
+        assert.equal(failureState.payload.tone, "error");
+        assert.match(failureState.payload.detail, /popup to copy it/i);
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
+  it("recovers when the microphone permission window is closed undecided", async () => {
+    await withMutedConsole(async () => {
+      const permissionWindows = [];
+      const chromeApi = createChromeApi({
+        tabMessages: [],
+        permissionWindows,
+        runtimeSendMessage: async (message) => {
+          if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+            return {
+              ok: false,
+              error: {
+                code: "MICROPHONE_PERMISSION_DENIED",
+                message: "Microphone permission was denied."
+              }
+            };
+          }
+
+          return { ok: true };
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: { randomUUID: () => "session-permission-dismissed" }
+      });
+
+      await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+      assert.equal(
+        getPublicSession(controller).status,
+        DictationStatus.WAITING_FOR_MICROPHONE
+      );
+      assert.match(permissionWindows[0], /sessionId=session-permission-dismissed/);
+      assert.match(permissionWindows[0], /tabId=7/);
+
+      // Closing the window is the page's last act; without this report the
+      // session would wait forever and every later press would say "busy".
+      await sendPermissionResult(controller, "session-permission-dismissed", {
+        granted: false,
+        tabId: 7,
+        error: {
+          code: "MICROPHONE_PERMISSION_DISMISSED",
+          message: "The microphone permission window was closed before choosing."
+        }
+      });
+
+      const session = getPublicSession(controller);
+      assert.equal(session.status, DictationStatus.ERROR);
+      assert.equal(session.error.code, "MICROPHONE_PERMISSION_DISMISSED");
+    });
+  });
+
+  it("resumes a granted permission after the worker was suspended", async () => {
+    await withMutedConsole(async () => {
+      const runtimeMessages = [];
+      const chromeApi = createChromeApi({
+        tabMessages: [],
+        runtimeSendMessage: async (message) => {
+          runtimeMessages.push(message);
+          if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+            return {
+              ok: true,
+              recording: {
+                startedAt: 1000,
+                tabId: 7,
+                mimeType: "audio/webm"
+              }
+            };
+          }
+
+          return { ok: true };
+        }
+      });
+      // A freshly constructed controller stands in for a restarted worker: the
+      // session that opened the permission window is gone from memory.
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: { randomUUID: () => "unused" }
+      });
+
+      assert.equal(getPublicSession(controller).status, DictationStatus.IDLE);
+
+      await sendPermissionResult(controller, "session-before-suspension", {
+        granted: true,
+        tabId: 7
+      });
+
+      const session = getPublicSession(controller);
+      assert.equal(session.status, DictationStatus.RECORDING);
+      assert.equal(session.id, "session-before-suspension");
+      assert.equal(session.tabId, 7);
+      assert.equal(
+        runtimeMessages.some((message) => (
+          message.type === MessageType.OFFSCREEN_START_RECORDING
+            && message.sessionId === "session-before-suspension"
+        )),
+        true
+      );
+    });
+  });
+
+  it("ignores a dismissed permission that arrives after the worker restarted", async () => {
+    await withMutedConsole(async () => {
+      const chromeApi = createChromeApi({
+        tabMessages: [],
+        runtimeSendMessage: async () => ({ ok: true })
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: { randomUUID: () => "unused" }
+      });
+
+      await sendPermissionResult(controller, "session-before-suspension", {
+        granted: false,
+        tabId: 7,
+        error: {
+          code: "MICROPHONE_PERMISSION_DISMISSED",
+          message: "The microphone permission window was closed before choosing."
+        }
+      });
+
+      // Nothing was wedged, so there is no session to resurrect and fail.
+      assert.equal(getPublicSession(controller).status, DictationStatus.IDLE);
+    });
+  });
+
+  it("lets the popup cancel a session stuck in a busy state", async () => {
+    await withMutedConsole(async () => {
+      const recorderStart = createDeferred();
+      const recorderStartRequested = createDeferred();
+      const tabMessages = [];
+      const chromeApi = createChromeApi({
+        tabMessages,
+        runtimeSendMessage: async (message) => {
+          if (message.type === MessageType.OFFSCREEN_START_RECORDING) {
+            recorderStartRequested.resolve();
+            return await recorderStart.promise;
+          }
+
+          return { ok: true };
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: { randomUUID: () => "session-cancelled" }
+      });
+
+      const startPromise = controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+      await recorderStartRequested.promise;
+      assert.equal(getPublicSession(controller).status, DictationStatus.STARTING);
+
+      const cancelResponse = await sendRuntimeMessage(
+        controller,
+        MessageType.RUNTIME_CANCEL_DICTATION
+      );
+
+      assert.equal(cancelResponse.ok, true);
+      assert.equal(getPublicSession(controller).status, DictationStatus.IDLE);
+      assert.equal(
+        tabMessages.some(({ message }) => (
+          message.type === MessageType.CONTENT_DISMISS_OVERLAY
+        )),
+        true
+      );
+
+      recorderStart.resolve({ ok: false, error: { code: "X", message: "late" } });
+      await startPromise;
+    });
+  });
+
   it("reports an unassigned keyboard shortcut to the popup", async () => {
     await withMutedConsole(async () => {
       const chromeApi = createChromeApi({
@@ -767,7 +1104,10 @@ function createChromeApi({
   contexts = null,
   storedSettings = {},
   tabMessages,
-  runtimeSendMessage
+  runtimeSendMessage,
+  insertTextResponse = null,
+  prepareTarget = { kind: "textarea" },
+  permissionWindows = []
 }) {
   let queryCount = 0;
   let offscreenDocumentExists = false;
@@ -791,12 +1131,12 @@ function createChromeApi({
         if (message.type === MessageType.CONTENT_PREPARE_DICTATION) {
           return {
             ok: true,
-            target: { kind: "textarea" }
+            target: prepareTarget
           };
         }
 
         if (message.type === MessageType.CONTENT_INSERT_TEXT) {
-          return {
+          return insertTextResponse ?? {
             ok: true,
             insertion: {
               method: "target",
@@ -841,7 +1181,10 @@ function createChromeApi({
       executeScript: async () => {}
     },
     windows: {
-      create: async () => ({ id: 1 })
+      create: async ({ url }) => {
+        permissionWindows.push(url);
+        return { id: 1 };
+      }
     }
   };
 }
@@ -857,6 +1200,20 @@ function getPublicSession(controller) {
   });
 
   return response.session;
+}
+
+function sendPermissionResult(controller, sessionId, payload) {
+  return new Promise((resolve) => {
+    controller.handleRuntimeMessage({
+      rawMessage: createEnvelope(
+        MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT,
+        payload,
+        sessionId
+      ),
+      sender: {},
+      sendResponse: resolve
+    });
+  });
 }
 
 function sendRuntimeMessage(controller, type, payload = {}) {

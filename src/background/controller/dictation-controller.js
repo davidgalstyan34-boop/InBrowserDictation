@@ -17,6 +17,7 @@ import { createCommandFlow } from "./command-flow.js";
 import { showFailureState } from "./overlay-feedback.js";
 import { createProcessingFlow } from "./processing-flow.js";
 import { createRecordingFlow } from "./recording-flow.js";
+import { createSessionWatchdog } from "./session-watchdog.js";
 
 /**
  * Composes the background side of one dictation session.
@@ -37,7 +38,13 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     storageArea: chromeApi.storage?.sync,
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
-  const sessions = createSessionStore();
+  const sessions = createSessionStore({
+    onChange: () => watchdog.observe()
+  });
+  const watchdog = createSessionWatchdog({
+    sessions,
+    onExpired: cancelStalledSession
+  });
   const recentResults = createRecentResultStore({
     storageArea: chromeApi.storage?.session
   });
@@ -74,7 +81,8 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     [MessageType.RUNTIME_GET_POPUP_STATE]: reportPopupState,
     [MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT]: recordingFlow.handleMicrophonePermissionResult,
     [MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT]: retryRecentImprovement,
-    [MessageType.RUNTIME_TOGGLE_DICTATION]: toggleFromRuntimeMessage
+    [MessageType.RUNTIME_TOGGLE_DICTATION]: toggleFromRuntimeMessage,
+    [MessageType.RUNTIME_CANCEL_DICTATION]: cancelFromRuntimeMessage
   });
 
   return {
@@ -161,6 +169,27 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
+   * Lets the popup abandon a session that is stuck in a non-toggleable state.
+   */
+  function cancelFromRuntimeMessage({ sendResponse }) {
+    void cancelActiveSession()
+      .then(() => {
+        sendResponse({
+          ok: true,
+          session: sessions.toPublicSession()
+        });
+      })
+      .catch((error) => {
+        sendResponse({
+          ok: false,
+          error: toMessageError(error, "Dictation could not be cancelled.")
+        });
+      });
+
+    return true;
+  }
+
+  /**
    * Retries only the text-improvement step for the stored latest transcript.
    */
   function retryRecentImprovement({ sendResponse }) {
@@ -197,7 +226,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     });
 
     processingFlow.abortActiveRequest();
-    sessions.fail({
+    sessions.fail(session.id, {
       code: "DICTATION_TAB_CLOSED",
       message: "The tab used for dictation was closed."
     });
@@ -206,10 +235,47 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   }
 
   /**
+   * Abandons the active session and returns the extension to a startable state.
+   *
+   * Used by the popup's explicit cancel and by the watchdog. Both need the same
+   * teardown: stop provider work, release the recorder, clear page feedback.
+   */
+  async function cancelActiveSession() {
+    const session = sessions.get();
+    if (session.status === DictationStatus.IDLE) {
+      return;
+    }
+
+    processingFlow.abortActiveRequest();
+    await recordingFlow.cancelRecordingForSession(session);
+    await content.safeDismissOverlay(session.tabId, session.id);
+    sessions.reset();
+  }
+
+  /**
+   * Fails a session that stopped making progress inside a waiting state.
+   */
+  async function cancelStalledSession(sessionId, status) {
+    const session = sessions.get();
+
+    processingFlow.abortActiveRequest();
+    await recordingFlow.cancelRecordingForSession(session);
+    await failSession(
+      sessionId,
+      "DICTATION_TIMED_OUT",
+      `Dictation stopped responding while ${describeStalledStatus(status)}.`
+    );
+  }
+
+  /**
    * Moves the session into ERROR and reports readable feedback to the page.
    */
-  async function failSession(code, message) {
-    const failedSession = sessions.fail({ code, message });
+  async function failSession(sessionId, code, message) {
+    const failedSession = sessions.fail(sessionId, { code, message });
+    if (!failedSession) {
+      return;
+    }
+
     console.warn("[In-Browser Dictation] Session failed.", {
       sessionId: failedSession.id,
       code,
@@ -285,6 +351,19 @@ function isCancellableSessionForTab(session, tabId) {
   return session.status !== DictationStatus.IDLE
     && session.status !== DictationStatus.SUCCESS
     && session.status !== DictationStatus.ERROR;
+}
+
+function describeStalledStatus(status) {
+  const descriptions = {
+    [DictationStatus.STARTING]: "preparing the page",
+    [DictationStatus.WAITING_FOR_MICROPHONE]: "waiting for microphone access",
+    [DictationStatus.STOPPING]: "finalizing the recording",
+    [DictationStatus.TRANSCRIBING]: "transcribing audio",
+    [DictationStatus.IMPROVING]: "improving the transcript",
+    [DictationStatus.INSERTING]: "inserting text"
+  };
+
+  return descriptions[status] ?? "working";
 }
 
 function canRunPopupRetry(status) {

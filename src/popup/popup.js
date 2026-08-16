@@ -9,6 +9,7 @@ const elements = {
   shortcutWarning: document.querySelector("#shortcut-warning"),
   shortcutSettingsButton: document.querySelector("#shortcut-settings-button"),
   toggleButton: document.querySelector("#toggle-button"),
+  cancelButton: document.querySelector("#cancel-button"),
   optionsButton: document.querySelector("#options-button"),
   recentResult: document.querySelector("#recent-result"),
   resultMeta: document.querySelector("#result-meta"),
@@ -35,6 +36,14 @@ function registerEvents() {
       await sendRuntimeMessage(MessageType.RUNTIME_TOGGLE_DICTATION);
       await refreshPopupState();
     }, "Dictation command sent.");
+  });
+
+  elements.cancelButton.addEventListener("click", async () => {
+    await runPopupAction(async () => {
+      elements.cancelButton.disabled = true;
+      await sendRuntimeMessage(MessageType.RUNTIME_CANCEL_DICTATION);
+      await refreshPopupState();
+    }, "Dictation cancelled.");
   });
 
   elements.optionsButton.addEventListener("click", () => {
@@ -101,6 +110,11 @@ function renderPopupState(state) {
   elements.toggleButton.textContent = getToggleButtonLabel(status);
   elements.toggleButton.disabled = !canToggleStatus(status);
 
+  // A busy session has no keyboard escape: the shortcut only reports "busy".
+  // This is the one control that can release it without waiting for a timeout.
+  elements.cancelButton.hidden = !isBusyStatus(status);
+  elements.cancelButton.disabled = !isBusyStatus(status);
+
   elements.recentResult.value = recentResult?.finalText ?? "";
   elements.resultMeta.textContent = recentResult
     ? `${recentResult.finalTextLength} chars`
@@ -120,6 +134,7 @@ function renderErrorState(error) {
   elements.shortcutWarning.hidden = true;
   elements.shortcutSettingsButton.hidden = true;
   elements.toggleButton.disabled = true;
+  elements.cancelButton.hidden = true;
   elements.copyFinalButton.disabled = true;
   elements.copyRawButton.disabled = true;
   elements.retryButton.disabled = true;

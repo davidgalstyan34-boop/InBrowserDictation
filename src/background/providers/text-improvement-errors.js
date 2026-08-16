@@ -1,20 +1,17 @@
+import { createCodedError, isCodedError } from "../../shared/extension-error.js";
+
 /**
  * Shared text-improvement error helpers for provider-neutral background code.
  */
 export function createTextImprovementError(code, message, cause = null) {
-  const error = new Error(message);
-  error.code = code;
-  if (cause) {
-    error.cause = cause;
-  }
-  return error;
+  return createCodedError(code, message, cause);
 }
 
 /**
  * Converts arbitrary provider/network failures into user-facing LLM errors.
  */
 export function normalizeTextImprovementError(error, { timedOut = false } = {}) {
-  if (error?.code && error?.message) {
+  if (isCodedError(error)) {
     return error;
   }
 

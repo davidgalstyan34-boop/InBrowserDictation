@@ -74,8 +74,16 @@ export function createRecentResultStore({
   }
 }
 
+/**
+ * Builds a recoverable record from a session that has produced final text.
+ *
+ * INSERTING counts as well as SUCCESS: insertion is the step most likely to
+ * fail irrecoverably (detached target plus a clipboard write the browser
+ * refuses), and that is exactly when the user needs the popup to still hold the
+ * text. Waiting for SUCCESS would save a record only when it is least needed.
+ */
 export function createRecentResultFromSession(session, now = () => Date.now()) {
-  if (session?.status !== DictationStatus.SUCCESS || !session.outputText?.text) {
+  if (!hasRecoverableOutput(session)) {
     return null;
   }
 
@@ -90,6 +98,13 @@ export function createRecentResultFromSession(session, now = () => Date.now()) {
     completedAt: session.completedAt,
     capturedAt: now()
   });
+}
+
+function hasRecoverableOutput(session) {
+  const producedFinalText = session?.status === DictationStatus.INSERTING
+    || session?.status === DictationStatus.SUCCESS;
+
+  return producedFinalText && Boolean(session.outputText?.text);
 }
 
 export function normalizeRecentResult(value) {

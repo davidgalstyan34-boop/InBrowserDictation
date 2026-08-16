@@ -57,11 +57,15 @@ The default command is `Ctrl+Shift+Space` on Windows/Linux and `Command+Shift+Sp
 
 Pressing the shortcut on a normal webpage displays a small overlay, captures the current editable target, and starts microphone recording through an offscreen document. Pressing it again stops recording, releases microphone tracks, sends the captured audio to Deepgram, sends the transcript to Gemini for the selected rewrite style, and inserts the final text into the originally captured target. Chrome prompts for microphone permission the first time recording starts.
 
-If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
+Password and hidden fields are never dictation targets. Focusing one and pressing the shortcut fails immediately without recording, so no audio is sent to a provider and no text reaches the clipboard.
+
+If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If both insertion and the clipboard fail, the text is still recoverable from the popup, and the page overlay says so. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
 
-The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings.
+The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, or open settings. While a session is mid-flight the popup also offers Cancel, which is the only way to abandon a session that the shortcut reports as busy.
+
+On first use, if you close the microphone permission window without choosing, the session ends cleanly and the next shortcut press starts a new one. If Chrome suspends the extension's service worker while that window is open, granting access still resumes the original session and inserts into the field you started from.
 
 ## Privacy Notes
 

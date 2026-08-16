@@ -3,10 +3,39 @@ import { MessageType, createEnvelope } from "../shared/messages.js";
 
 const requestButton = document.querySelector("#request-microphone");
 const statusElement = document.querySelector("#permission-status");
-const sessionId = new URLSearchParams(location.search).get("sessionId");
+const pageParameters = new URLSearchParams(location.search);
+const sessionId = pageParameters.get("sessionId");
+const tabId = Number.parseInt(pageParameters.get("tabId") ?? "", 10);
+
+// The service worker parks the session in WAITING_FOR_MICROPHONE until this page
+// reports back. Closing the window without choosing would otherwise leave that
+// session waiting forever, and every later shortcut press would report "busy".
+let reportedResult = false;
 
 requestButton.addEventListener("click", () => {
   void requestMicrophonePermission();
+});
+
+window.addEventListener("pagehide", () => {
+  if (reportedResult) {
+    return;
+  }
+
+  reportedResult = true;
+  void chrome.runtime.sendMessage(createEnvelope(
+    MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT,
+    {
+      granted: false,
+      tabId: Number.isInteger(tabId) ? tabId : null,
+      error: {
+        code: "MICROPHONE_PERMISSION_DISMISSED",
+        message: "The microphone permission window was closed before choosing."
+      }
+    },
+    sessionId
+  )).catch(() => {
+    // The page is unloading; a failed delivery has nowhere left to report.
+  });
 });
 
 void requestMicrophonePermission();
@@ -53,9 +82,16 @@ async function notifyBackground(payload) {
     throw new Error("Missing dictation session id.");
   }
 
+  reportedResult = true;
+
   await chrome.runtime.sendMessage(createEnvelope(
     MessageType.RUNTIME_MICROPHONE_PERMISSION_RESULT,
-    payload,
+    {
+      ...payload,
+      // Echoed so a service worker that was suspended during the prompt can
+      // rebuild the session instead of discarding a permission the user granted.
+      tabId: Number.isInteger(tabId) ? tabId : null
+    },
     sessionId
   ));
 }

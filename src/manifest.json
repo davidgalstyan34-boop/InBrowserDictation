@@ -49,6 +49,7 @@
         "content/overlay.js",
         "content/target-capture.js",
         "content/text-insertion.js",
+        "shared/extension-error.js",
         "shared/messages.js"
       ],
       "matches": [
