@@ -28,7 +28,7 @@ This keeps the first implementation window focused on browser behavior instead o
 
 The Deepgram host permission is needed because the service worker posts the captured audio blob to the STT provider. The Google Generative Language host permission is needed because the service worker posts transcript text to the Gemini provider.
 
-`clipboardWrite` is needed because the content script copies final text when the originally captured DOM target is detached, stale, unsupported, or unavailable.
+`clipboardWrite` is needed because the offscreen extension document copies final text when the originally captured DOM target is detached, stale, unsupported, or unavailable.
 
 ## 3. Execution Contexts
 
@@ -46,13 +46,14 @@ Content script:
 
 - Captures active editable target at dictation start.
 - Keeps DOM-bound target/range references local to the page.
-- Performs eventual insertion or clipboard fallback.
+- Performs eventual insertion and reports target failures to the service worker.
 - Shows in-page overlay state.
 
 Offscreen document:
 
 - Owns `getUserMedia` and `MediaRecorder`.
 - Receives start/stop recording messages from the service worker.
+- Writes fallback text to the clipboard from the extension origin.
 - Returns captured audio data and metadata to the service worker.
 - Cleans up media tracks and blobs.
 
@@ -73,7 +74,7 @@ Background source layout:
 
 - `background/service-worker.js`: Chrome event entrypoint only.
 - `background/controller/`: session composition and lifecycle flows.
-- `background/clients/`: Chrome API adapters for tabs, content scripts, offscreen recording, and permission pages.
+- `background/clients/`: Chrome API adapters for tabs, content scripts, offscreen recording/clipboard work, and permission pages.
 - `background/providers/`: STT/LLM facades, provider implementations, provider errors, prompts, request signals, and audio payload conversion.
 - `background/session/`: authoritative session shape, store, and public snapshots.
 - `background/diagnostics/`: command/runtime diagnostics.
@@ -118,7 +119,7 @@ Important message families:
 - `content.prepareDictation`: capture target and show immediate feedback.
 - `content.dismissOverlay`: remove terminal overlay feedback before a replacement session starts.
 - `content.showState`: update overlay.
-- `content.insertText`: insert final text into the captured target or copy it to the clipboard.
+- `content.insertText`: insert final text into the captured target and report target failures.
 - `runtime.getPopupState`: popup-only state, including the current session snapshot and the latest recoverable result text.
 - `runtime.clearRecentResult`: forget the stored latest result.
 - `runtime.microphonePermissionResult`: visible permission page reports the first-run microphone grant result. The payload echoes the session's tab id so a suspended service worker can rebuild the session instead of discarding a grant.
@@ -129,6 +130,7 @@ Important message families:
 - `offscreen.recordingDurationCapped`: the recorder stopped itself at the maximum recording length and is holding the audio.
 - `offscreen.startRecording`: request microphone permission and start `MediaRecorder`.
 - `offscreen.stopRecording`: stop `MediaRecorder`, release tracks, and return the audio payload.
+- `offscreen.writeClipboard`: copy final fallback text from the trusted extension document.
 
 Every session-bound message carries `sessionId`. Receivers ignore stale session IDs, and the background session store rejects mutations whose `sessionId` no longer matches the current session so a late callback cannot advance its successor.
 
@@ -202,7 +204,7 @@ The content script runs in every frame, because many editors (mail compose windo
 
 - Overlay updates target the top frame. An overlay drawn inside a small, scrolled, or hidden iframe would be clipped or invisible.
 - Dismissals broadcast, because the overlay and the captured target can live in different frames and each has to be released.
-- Capture and insertion need a response, so exactly one frame answers. A frame claims the session only when the focused element is in it: focus is unique across a frame tree, and ancestors are excluded because their active element is the frame holding focus. When nothing in the tab has focus, the top frame claims, which keeps a page with no editable target behaving as before. If no frame claims, the top frame is asked again with `requireClaim`, so the clipboard fallback still has an owner.
+- Capture and insertion need a response, so exactly one frame answers. A frame claims the session only when the focused element is in it: focus is unique across a frame tree, and ancestors are excluded because their active element is the frame holding focus. When nothing in the tab has focus, the top frame claims, which keeps a page with no editable target behaving as before. If no frame claims, the top frame is asked again with `requireClaim`, so it can report the missing target before background clipboard fallback.
 
 Focus is resolved through open shadow roots, since `document.activeElement` stops at the shadow host and would otherwise report a web-component wrapper instead of the editor inside it.
 
@@ -230,10 +232,10 @@ Changed focus:
 - use the captured target if still valid.
 - fallback to clipboard if target is detached, invalid, or insertion fails.
 
-Insertion response:
+Final delivery metadata:
 
 ```js
-insertText({ text }) -> { method, targetKind, textLength, fallbackReason }
+{ method, strategy?, targetKind, textLength, fallbackReason? }
 ```
 
 The response never includes inserted text.
@@ -394,7 +396,7 @@ A compatibility matrix across target editors is still to be documented.
 - Microphone APIs belong outside the service worker.
 - Rich editors may rerender and invalidate DOM ranges.
 - Framework-controlled inputs may ignore naive `value` assignments.
-- Clipboard writes can fail depending on permissions and user activation.
+- Offscreen clipboard writes can still fail if Chrome or system policy refuses access.
 - Restricted pages cannot receive content scripts.
 - Tab close/navigation should result in safe failure or clipboard fallback.
 

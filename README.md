@@ -65,7 +65,7 @@ Recording stops automatically after five minutes and transcribes what it capture
 
 Password and hidden fields are never dictation targets. Focusing one and pressing the shortcut fails immediately without recording, so no audio is sent to a provider and no text reaches the clipboard.
 
-If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If both insertion and the clipboard fail, the text is still recoverable from the popup, and the page overlay says so. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
+If the captured target is gone, stale, or no editable target was focused, the extension copies the final text from its offscreen extension document. This avoids depending on the webpage's clipboard context after provider processing. If both insertion and the clipboard fail, the text is still recoverable from the popup, and the page overlay says so. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
 
 On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page. If access was previously denied by Chrome or by the operating system, the window shows a Go to settings button that opens Chrome's microphone settings.
 
@@ -84,7 +84,7 @@ The latest successful result is kept temporarily in `chrome.storage.session` for
 Permissions used today:
 
 - `storage`: keeps session-only provider keys, synchronized preferences, local custom styles, and the temporary latest-result recovery record.
-- `offscreen`: records microphone audio from an offscreen document because the service worker cannot own media APIs.
+- `offscreen`: records microphone audio and performs fallback clipboard writes because the service worker cannot own the required DOM/media APIs.
 - `activeTab` and `scripting`: inject the content script into the active tab after an unpacked extension reload when the static listener is missing.
 - `clipboardWrite`: copies final text when the captured DOM target cannot be safely written.
 - `https://api.deepgram.com/*`: sends recorded audio to Deepgram for speech-to-text.

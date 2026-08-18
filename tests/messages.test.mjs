@@ -30,6 +30,11 @@ describe("message contracts", () => {
     const state = createEnvelope(MessageType.OFFSCREEN_GET_RECORDING_STATE, {}, "session-2");
     const start = createEnvelope(MessageType.OFFSCREEN_START_RECORDING, {}, "session-2");
     const stop = createEnvelope(MessageType.OFFSCREEN_STOP_RECORDING, {}, "session-2");
+    const clipboard = createEnvelope(
+      MessageType.OFFSCREEN_WRITE_CLIPBOARD,
+      { text: "private" },
+      "session-2"
+    );
     const dismiss = createEnvelope(MessageType.CONTENT_DISMISS_OVERLAY, {}, "session-2");
     const insert = createEnvelope(MessageType.CONTENT_INSERT_TEXT, { text: "private" }, "session-2");
     const popup = createEnvelope(MessageType.RUNTIME_GET_POPUP_STATE, {}, null);
@@ -40,6 +45,7 @@ describe("message contracts", () => {
     assert.equal(parseMessageEnvelope(state).type, MessageType.OFFSCREEN_GET_RECORDING_STATE);
     assert.equal(parseMessageEnvelope(start).type, MessageType.OFFSCREEN_START_RECORDING);
     assert.equal(parseMessageEnvelope(stop).type, MessageType.OFFSCREEN_STOP_RECORDING);
+    assert.equal(parseMessageEnvelope(clipboard).type, MessageType.OFFSCREEN_WRITE_CLIPBOARD);
     assert.equal(parseMessageEnvelope(dismiss).type, MessageType.CONTENT_DISMISS_OVERLAY);
     assert.equal(parseMessageEnvelope(insert).type, MessageType.CONTENT_INSERT_TEXT);
     assert.equal(parseMessageEnvelope(popup).type, MessageType.RUNTIME_GET_POPUP_STATE);

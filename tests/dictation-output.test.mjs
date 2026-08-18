@@ -208,6 +208,69 @@ describe("dictation controller: output and fallback", () => {
     });
   });
 
+  it("copies popup-started dictation when no editable target was focused", async () => {
+    await withMutedConsole(async () => {
+      const originalFetch = globalThis.fetch;
+      const tabMessages = [];
+      const runtimeMessages = [];
+
+      globalThis.fetch = async (url) => {
+        if (String(url).startsWith("https://api.deepgram.com/")) {
+          return createDeepgramTranscriptResponse("clipboard transcript");
+        }
+
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      };
+
+      try {
+        const chromeApi = createChromeApi({
+          storedSettings: {
+            sttApiKey: "deepgram-key",
+            defaultStyleId: "raw"
+          },
+          prepareTarget: { kind: "none" },
+          tabMessages,
+          insertTextResponse: {
+            ok: false,
+            error: {
+              code: "INSERTION_TARGET_MISSING",
+              message: "No editable target is available for insertion."
+            }
+          },
+          runtimeSendMessage: createRecordingRuntimeHandler(runtimeMessages)
+        });
+        const controller = createDictationController({
+          chromeApi,
+          clientsApi: null,
+          cryptoApi: {
+            randomUUID: () => "session-popup-no-target"
+          }
+        });
+
+        await sendRuntimeMessage(controller, MessageType.RUNTIME_TOGGLE_DICTATION);
+        await sendRuntimeMessage(controller, MessageType.RUNTIME_TOGGLE_DICTATION);
+
+        const session = await getPublicSession(controller);
+        const clipboardMessage = runtimeMessages.find((message) => (
+          message.type === MessageType.OFFSCREEN_WRITE_CLIPBOARD
+        ));
+        const completionState = tabMessages
+          .map(({ message }) => message)
+          .filter((message) => message.type === MessageType.CONTENT_SHOW_STATE)
+          .at(-1);
+
+        assert.equal(session.status, DictationStatus.SUCCESS);
+        assert.equal(session.insertion.method, "clipboard");
+        assert.equal(session.insertion.strategy, "offscreen-clipboard");
+        assert.equal(session.insertion.fallbackReason, "INSERTION_TARGET_MISSING");
+        assert.equal(clipboardMessage.payload.text, "clipboard transcript");
+        assert.equal(completionState.payload.title, "Copied to clipboard");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
   it("keeps the final text recoverable when insertion and clipboard both fail", async () => {
     await withMutedConsole(async () => {
       const originalFetch = globalThis.fetch;
@@ -234,11 +297,19 @@ describe("dictation controller: output and fallback", () => {
           insertTextResponse: {
             ok: false,
             error: {
-              code: "INSERTION_AND_CLIPBOARD_FAILED",
-              message: "Text could not be inserted or copied to the clipboard."
+              code: "INSERTION_TARGET_MISSING",
+              message: "No editable target is available for insertion."
             }
           },
-          runtimeSendMessage: createRecordingRuntimeHandler([])
+          runtimeSendMessage: createRecordingRuntimeHandler([], {
+            clipboardResponse: {
+              ok: false,
+              error: {
+                code: "CLIPBOARD_WRITE_FAILED",
+                message: "Chrome did not allow the extension to write to the clipboard."
+              }
+            }
+          })
         });
         const controller = createDictationController({
           chromeApi,

@@ -21,7 +21,8 @@ export const MessageType = Object.freeze({
   OFFSCREEN_GET_RECORDING_STATE: "offscreen.getRecordingState",
   OFFSCREEN_RECORDING_DURATION_CAPPED: "offscreen.recordingDurationCapped",
   OFFSCREEN_START_RECORDING: "offscreen.startRecording",
-  OFFSCREEN_STOP_RECORDING: "offscreen.stopRecording"
+  OFFSCREEN_STOP_RECORDING: "offscreen.stopRecording",
+  OFFSCREEN_WRITE_CLIPBOARD: "offscreen.writeClipboard"
 });
 
 const MESSAGE_TYPES = new Set(Object.values(MessageType));

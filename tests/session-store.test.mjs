@@ -146,7 +146,7 @@ describe("session store", () => {
 
     const completed = sessions.markInsertionDone("session-5", {
       method: "clipboard",
-      strategy: "async-clipboard",
+      strategy: "offscreen-clipboard",
       targetKind: "textarea",
       textLength: 14,
       fallbackReason: "INSERTION_TARGET_STALE"
@@ -155,7 +155,7 @@ describe("session store", () => {
     assert.equal(completed.status, DictationStatus.SUCCESS);
     assert.deepEqual(sessions.toPublicSession().insertion, {
       method: "clipboard",
-      strategy: "async-clipboard",
+      strategy: "offscreen-clipboard",
       targetKind: "textarea",
       textLength: 14,
       fallbackReason: "INSERTION_TARGET_STALE"

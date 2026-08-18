@@ -139,7 +139,14 @@ export function createTestAudioPayload() {
   };
 }
 
-export function createRecordingRuntimeHandler(runtimeMessages) {
+export function createRecordingRuntimeHandler(runtimeMessages, {
+  clipboardResponse = {
+    ok: true,
+    clipboard: {
+      strategy: "offscreen-clipboard"
+    }
+  }
+} = {}) {
   return async (message) => {
     runtimeMessages.push(message);
 
@@ -159,6 +166,10 @@ export function createRecordingRuntimeHandler(runtimeMessages) {
         ok: true,
         audio: createTestAudioPayload()
       };
+    }
+
+    if (message.type === MessageType.OFFSCREEN_WRITE_CLIPBOARD) {
+      return clipboardResponse;
     }
 
     throw new Error(`Unexpected runtime message: ${message.type}`);

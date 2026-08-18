@@ -8,10 +8,11 @@ import {
   selectSupportedAudioMimeType
 } from "../shared/audio-recording.js";
 import { MessageType, createEnvelope, parseMessageEnvelope } from "../shared/messages.js";
+import { writeTextToClipboard } from "./clipboard.js";
 
-// The offscreen document owns live microphone objects because the MV3 service
-// worker cannot rely on DOM/media APIs. It returns only serializable recording
-// results to the background controller.
+// The offscreen document owns live microphone objects and clipboard writes
+// because the MV3 service worker cannot rely on DOM/media APIs. It returns only
+// serializable metadata and recording results to the background controller.
 let activeRecording = null;
 
 // Audio from a recording that ended on its own, waiting to be collected.
@@ -24,7 +25,8 @@ let finishedRecording = null;
 const messageHandlers = Object.freeze({
   [MessageType.OFFSCREEN_GET_RECORDING_STATE]: getRecordingState,
   [MessageType.OFFSCREEN_START_RECORDING]: startRecording,
-  [MessageType.OFFSCREEN_STOP_RECORDING]: stopRecording
+  [MessageType.OFFSCREEN_STOP_RECORDING]: stopRecording,
+  [MessageType.OFFSCREEN_WRITE_CLIPBOARD]: writeClipboard
 });
 
 chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
@@ -35,7 +37,7 @@ chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
     return false;
   }
 
-  respondWithRecordingResult(handler(message), sendResponse);
+  respondWithOffscreenResult(handler(message), sendResponse);
   return true;
 });
 
@@ -112,6 +114,15 @@ async function startRecording(message) {
     activeRecording = null;
     throw normalizeRecordingError(error);
   }
+}
+
+/**
+ * Copies final fallback text from the extension origin.
+ */
+async function writeClipboard(message) {
+  return {
+    clipboard: writeTextToClipboard(message.payload?.text)
+  };
 }
 
 /**
@@ -326,7 +337,7 @@ function blobToDataUrl(blob) {
 /**
  * Normalizes async handler success/failure into the extension message shape.
  */
-function respondWithRecordingResult(resultPromise, sendResponse) {
+function respondWithOffscreenResult(resultPromise, sendResponse) {
   resultPromise
     .then((result) => {
       sendResponse({

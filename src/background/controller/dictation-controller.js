@@ -7,6 +7,7 @@ import {
 import { loadSettings } from "../../shared/settings-store.js";
 import { createContentClient } from "../clients/content-client.js";
 import { createMicrophonePermissionClient } from "../clients/microphone-permission-client.js";
+import { createOffscreenClipboardClient } from "../clients/offscreen-clipboard-client.js";
 import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
 import { createSpeechToTextClient } from "../providers/speech-to-text-client.js";
 import { createTextImprovementClient } from "../providers/text-improvement-client.js";
@@ -28,6 +29,7 @@ import { createSessionWatchdog } from "./session-watchdog.js";
  */
 export function createDictationController({ chromeApi, clientsApi, cryptoApi }) {
   const content = createContentClient({ chromeApi });
+  const clipboard = createOffscreenClipboardClient({ chromeApi });
   const microphonePermission = createMicrophonePermissionClient({ chromeApi });
   const recorder = createOffscreenRecorderClient({ chromeApi, clientsApi });
   const speechToText = createSpeechToTextClient({
@@ -58,6 +60,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     failSession
   });
   const processingFlow = createProcessingFlow({
+    clipboard,
     content,
     recentResults,
     speechToText,

@@ -4,15 +4,14 @@ import { createCodedError, isCodedError } from "../shared/extension-error.js";
  * Inserts final dictation output into the target captured at session start.
  *
  * Live elements and Ranges are content-script-only data. This module never
- * reaches back into the service worker for target state, and it falls back to
- * clipboard writes when a previously captured DOM target is no longer safe.
+ * reaches back into the service worker for target state. Target failures are
+ * returned to the background, which owns the offscreen clipboard fallback.
  */
 
 /**
- * Attempts target insertion first, then clipboard fallback.
+ * Attempts insertion into the target captured when dictation started.
  */
 export async function insertTextIntoCapturedTarget(target, text, {
-  clipboard = getDefaultClipboard(),
   documentRef = globalThis.document,
   windowRef = globalThis.window,
   EventCtor = globalThis.Event,
@@ -20,7 +19,6 @@ export async function insertTextIntoCapturedTarget(target, text, {
 } = {}) {
   const insertionText = normalizeInsertionText(text);
   assertTargetAllowsFallback(target);
-  let targetError = null;
 
   try {
     return insertIntoCapturedTarget(target, insertionText, {
@@ -30,40 +28,15 @@ export async function insertTextIntoCapturedTarget(target, text, {
       InputEventCtor
     });
   } catch (error) {
-    targetError = normalizeInsertionError(error);
-  }
-
-  try {
-    const strategy = await writeTextToClipboard(insertionText, {
-      clipboard,
-      documentRef
-    });
-
-    return {
-      method: "clipboard",
-      strategy,
-      targetKind: target?.kind ?? "none",
-      textLength: insertionText.length,
-      fallbackReason: targetError.code
-    };
-  } catch (clipboardError) {
-    throw createInsertionError(
-      "INSERTION_AND_CLIPBOARD_FAILED",
-      "Text could not be inserted or copied to the clipboard.",
-      {
-        targetError,
-        clipboardError: normalizeInsertionError(clipboardError)
-      }
-    );
+    throw normalizeInsertionError(error);
   }
 }
 
 /**
  * Rejects targets whose capture was a refusal rather than a miss.
  *
- * `none` means "nothing editable was focused", and copying to the clipboard is
- * a helpful answer. `blocked` means the field was rejected on purpose, so the
- * clipboard is the one place the text must not go.
+ * `none` can proceed to the background clipboard fallback. `blocked` means the
+ * field was rejected on purpose, so recording stops before any output exists.
  */
 function assertTargetAllowsFallback(target) {
   if (target?.kind !== "blocked") {
@@ -354,47 +327,6 @@ function moveTextControlCaret(element, caret) {
   }
 }
 
-async function writeTextToClipboard(text, { clipboard, documentRef }) {
-  if (typeof clipboard?.writeText === "function") {
-    await clipboard.writeText(text);
-    return "async-clipboard";
-  }
-
-  if (legacyCopyText(text, documentRef)) {
-    return "exec-command";
-  }
-
-  throw createInsertionError(
-    "CLIPBOARD_UNAVAILABLE",
-    "Clipboard fallback is unavailable on this page."
-  );
-}
-
-function legacyCopyText(text, documentRef) {
-  if (!documentRef?.body || typeof documentRef.execCommand !== "function") {
-    return false;
-  }
-
-  const textarea = documentRef.createElement?.("textarea");
-  if (!textarea) {
-    return false;
-  }
-
-  textarea.value = text;
-  textarea.setAttribute?.("readonly", "");
-  textarea.style.position = "fixed";
-  textarea.style.top = "-1000px";
-  textarea.style.left = "-1000px";
-  documentRef.body.appendChild(textarea);
-  textarea.select?.();
-
-  try {
-    return documentRef.execCommand("copy") === true;
-  } finally {
-    textarea.remove?.();
-  }
-}
-
 function clampIndex(value, length) {
   return Number.isInteger(value) && value >= 0 && value <= length
     ? value
@@ -410,10 +342,6 @@ function normalizeInsertionText(text) {
   }
 
   return text;
-}
-
-function getDefaultClipboard() {
-  return globalThis.navigator?.clipboard;
 }
 
 function createInsertionError(code, message, cause = null) {

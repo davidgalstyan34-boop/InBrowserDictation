@@ -92,8 +92,8 @@ export function createOffscreenRecorderClient({
     if (!creatingDocument) {
       creatingDocument = chromeApi.offscreen.createDocument({
         url: recorderPath,
-        reasons: ["USER_MEDIA"],
-        justification: "Record microphone audio for shortcut dictation."
+        reasons: ["USER_MEDIA", "CLIPBOARD"],
+        justification: "Record microphone audio and copy fallback dictation text."
       }).finally(() => {
         creatingDocument = null;
       });

@@ -14,6 +14,7 @@ import {
  * transcript fallback, and insertion ordering.
  */
 export function createProcessingFlow({
+  clipboard,
   content,
   recentResults = null,
   speechToText,
@@ -121,25 +122,50 @@ export function createProcessingFlow({
    * Sends private final text to the captured page target and completes insertion.
    */
   async function insertOutputTextForCurrentSession(session, isRecoverable) {
-    const insertionResponse = await content.insertText(
-      session.tabId,
-      session.id,
-      session.outputText?.text ?? ""
-    );
+    const text = session.outputText?.text ?? "";
+    const insertion = await insertIntoTargetOrCopy(session, text, isRecoverable);
 
-    if (!insertionResponse?.ok) {
-      throw withRecoveryHint(
-        toError(insertionResponse?.error, "Text could not be inserted."),
-        isRecoverable
-      );
-    }
-
-    const completedSession = sessions.markInsertionDone(session.id, insertionResponse.insertion);
+    const completedSession = sessions.markInsertionDone(session.id, insertion);
     if (!completedSession) {
       return;
     }
 
     await showInsertionCompleteState(content, completedSession);
+  }
+
+  /**
+   * Tries the captured DOM target, then copies from the offscreen extension
+   * document when the page target or content-script connection is unavailable.
+   */
+  async function insertIntoTargetOrCopy(session, text, isRecoverable) {
+    let targetError = null;
+
+    try {
+      const response = await content.insertText(session.tabId, session.id, text);
+      if (response?.ok) {
+        return response.insertion;
+      }
+
+      targetError = toError(response?.error, "Text could not be inserted.");
+    } catch (error) {
+      targetError = toError(error, "Text could not be inserted.");
+    }
+
+    try {
+      const clipboardResult = await clipboard.writeText(session.id, text);
+      return {
+        method: "clipboard",
+        strategy: clipboardResult?.strategy ?? "offscreen-clipboard",
+        targetKind: session.target?.kind ?? "none",
+        textLength: text.length,
+        fallbackReason: targetError.code
+      };
+    } catch (clipboardError) {
+      throw withRecoveryHint(
+        createOutputDeliveryError(targetError, clipboardError),
+        isRecoverable
+      );
+    }
   }
 
   async function saveRecentResult(session) {
@@ -165,6 +191,16 @@ function withRecoveryHint(error, isRecoverable) {
   }
 
   error.message = `${error.message} Open the extension popup to copy it.`;
+  return error;
+}
+
+function createOutputDeliveryError(targetError, clipboardError) {
+  const error = new Error("Text could not be inserted or copied to the clipboard.");
+  error.code = "INSERTION_AND_CLIPBOARD_FAILED";
+  error.cause = {
+    targetError,
+    clipboardError
+  };
   return error;
 }
 

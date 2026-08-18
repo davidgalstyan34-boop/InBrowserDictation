@@ -35,6 +35,8 @@ let listener = null;
 let sentRuntimeMessages = [];
 let recorders = [];
 let stoppedTracks = 0;
+let clipboardWrites = [];
+let clipboardTextElement = null;
 let originalNavigatorDescriptor = null;
 const originalGlobals = {};
 
@@ -82,12 +84,27 @@ class FakeFileReader {
 }
 
 before(async () => {
-  for (const name of ["chrome", "MediaRecorder", "FileReader"]) {
+  for (const name of ["chrome", "document", "MediaRecorder", "FileReader"]) {
     originalGlobals[name] = globalThis[name];
   }
 
   globalThis.MediaRecorder = FakeMediaRecorder;
   globalThis.FileReader = FakeFileReader;
+  clipboardTextElement = {
+    value: "",
+    select() {}
+  };
+  globalThis.document = {
+    querySelector: (selector) => selector === "#clipboard-text" ? clipboardTextElement : null,
+    execCommand: (command) => {
+      if (command !== "copy") {
+        return false;
+      }
+
+      clipboardWrites.push(clipboardTextElement.value);
+      return true;
+    }
+  };
 
   // Node exposes `navigator` as a getter-only property, so it cannot be
   // assigned the way the other globals can.
@@ -141,6 +158,7 @@ beforeEach(() => {
   sentRuntimeMessages = [];
   recorders = [];
   stoppedTracks = 0;
+  clipboardWrites = [];
 });
 
 describe("offscreen recorder", () => {
@@ -236,6 +254,39 @@ describe("offscreen recorder", () => {
 
     assert.equal(stopped.ok, false);
     assert.equal(stopped.error.code, "RECORDING_EMPTY");
+  });
+
+  it("writes fallback text from the offscreen extension document", async () => {
+    const response = await send(
+      MessageType.OFFSCREEN_WRITE_CLIPBOARD,
+      "session-clipboard",
+      { text: "copied result" }
+    );
+
+    assert.equal(response.ok, true);
+    assert.deepEqual(response.clipboard, {
+      strategy: "offscreen-clipboard",
+      textLength: 13
+    });
+    assert.deepEqual(clipboardWrites, ["copied result"]);
+  });
+
+  it("reports when Chrome rejects an offscreen clipboard write", async () => {
+    const originalExecCommand = globalThis.document.execCommand;
+    globalThis.document.execCommand = () => false;
+
+    try {
+      const response = await send(
+        MessageType.OFFSCREEN_WRITE_CLIPBOARD,
+        "session-clipboard-denied",
+        { text: "uncopied result" }
+      );
+
+      assert.equal(response.ok, false);
+      assert.equal(response.error.code, "CLIPBOARD_WRITE_FAILED");
+    } finally {
+      globalThis.document.execCommand = originalExecCommand;
+    }
   });
 
   it("ignores messages it does not own", () => {

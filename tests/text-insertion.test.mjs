@@ -17,9 +17,7 @@ describe("content text insertion", () => {
       selectionEnd: 11,
       valueAtCapture: "hello world",
       valueLength: 11
-    }, "there", {
-      clipboard: null
-    });
+    }, "there");
 
     assert.deepEqual(result, {
       method: "target",
@@ -32,66 +30,46 @@ describe("content text insertion", () => {
     assert.equal(element.focused, true);
   });
 
-  it("copies to clipboard when the captured text control changed before insertion", async () => {
-    let copiedText = "";
+  it("reports a stale target when the captured text control changed before insertion", async () => {
     const element = createTextControl({
       value: "changed"
     });
 
-    const result = await insertTextIntoCapturedTarget({
-      kind: "textarea",
-      element,
-      selectionStart: 0,
-      selectionEnd: 3,
-      valueAtCapture: "old",
-      valueLength: 3
-    }, "final text", {
-      clipboard: {
-        writeText: async (text) => {
-          copiedText = text;
-        }
-      }
-    });
+    await assert.rejects(
+      insertTextIntoCapturedTarget({
+        kind: "textarea",
+        element,
+        selectionStart: 0,
+        selectionEnd: 3,
+        valueAtCapture: "old",
+        valueLength: 3
+      }, "final text"),
+      { code: "INSERTION_TARGET_STALE" }
+    );
 
-    assert.equal(copiedText, "final text");
-    assert.deepEqual(result, {
-      method: "clipboard",
-      strategy: "async-clipboard",
-      targetKind: "textarea",
-      textLength: 10,
-      fallbackReason: "INSERTION_TARGET_STALE"
-    });
     assert.equal(element.value, "changed");
   });
 
-  it("copies to clipboard when the target changed without changing length", async () => {
-    let copiedText = "";
+  it("detects a changed target even when its length stayed the same", async () => {
     const element = createTextControl({ value: "world" });
 
-    const result = await insertTextIntoCapturedTarget({
-      kind: "input",
-      element,
-      selectionStart: 5,
-      selectionEnd: 5,
-      valueAtCapture: "hello",
-      valueLength: 5
-    }, "final text", {
-      clipboard: {
-        writeText: async (text) => {
-          copiedText = text;
-        }
-      }
-    });
+    await assert.rejects(
+      insertTextIntoCapturedTarget({
+        kind: "input",
+        element,
+        selectionStart: 5,
+        selectionEnd: 5,
+        valueAtCapture: "hello",
+        valueLength: 5
+      }, "final text"),
+      { code: "INSERTION_TARGET_STALE" }
+    );
 
-    assert.equal(copiedText, "final text");
-    assert.equal(result.method, "clipboard");
-    assert.equal(result.fallbackReason, "INSERTION_TARGET_STALE");
     assert.equal(element.value, "world");
   });
 
   it("keeps successful text-control insertion when caret APIs are unavailable", async () => {
     const events = [];
-    let copiedText = "";
     const element = createTextControl({
       value: "hello",
       events
@@ -107,13 +85,7 @@ describe("content text insertion", () => {
       selectionEnd: 5,
       valueAtCapture: "hello",
       valueLength: 5
-    }, " world", {
-      clipboard: {
-        writeText: async (text) => {
-          copiedText = text;
-        }
-      }
-    });
+    }, " world");
 
     assert.deepEqual(result, {
       method: "target",
@@ -121,7 +93,6 @@ describe("content text insertion", () => {
       textLength: 6
     });
     assert.equal(element.value, "hello world");
-    assert.equal(copiedText, "");
     assert.deepEqual(events.map((event) => event.type), ["beforeinput", "input"]);
   });
 
@@ -144,7 +115,6 @@ describe("content text insertion", () => {
       element,
       range
     }, "edited text", {
-      clipboard: null,
       documentRef: {
         createTextNode: (text) => ({ textContent: text }),
         queryCommandSupported: (command) => command === "insertText",
@@ -211,7 +181,6 @@ describe("content text insertion", () => {
       element,
       range
     }, "edited text", {
-      clipboard: null,
       documentRef: {
         createTextNode: (text) => ({ textContent: text })
       },
@@ -237,8 +206,7 @@ describe("content text insertion", () => {
     assert.equal(selectedRanges.includes(range), true);
   });
 
-  it("reports a coded fallback reason when the target throws a DOMException", async () => {
-    let copiedText = "";
+  it("normalizes a DOMException thrown during target insertion", async () => {
     const element = createTextControl({ value: "hello" });
     element.dispatchEvent = () => {
       // DOMException carries a legacy numeric `code` (InvalidStateError is 11),
@@ -246,68 +214,33 @@ describe("content text insertion", () => {
       throw new DOMException("The element is in an invalid state.", "InvalidStateError");
     };
 
-    const result = await insertTextIntoCapturedTarget({
-      kind: "input",
-      element,
-      selectionStart: 5,
-      selectionEnd: 5,
-      valueAtCapture: "hello",
-      valueLength: 5
-    }, "final text", {
-      clipboard: {
-        writeText: async (text) => {
-          copiedText = text;
-        }
-      }
-    });
-
-    assert.equal(copiedText, "final text");
-    assert.equal(result.fallbackReason, "INSERTION_FAILED");
+    await assert.rejects(
+      insertTextIntoCapturedTarget({
+        kind: "input",
+        element,
+        selectionStart: 5,
+        selectionEnd: 5,
+        valueAtCapture: "hello",
+        valueLength: 5
+      }, "final text"),
+      { code: "INSERTION_FAILED" }
+    );
   });
 
-  it("never copies text captured against a blocked field", async () => {
-    let clipboardCalls = 0;
-
+  it("rejects text captured against a blocked field", async () => {
     await assert.rejects(
       insertTextIntoCapturedTarget({
         kind: "blocked",
         reason: "password inputs are never dictation targets"
-      }, "secret text", {
-        clipboard: {
-          writeText: async () => {
-            clipboardCalls += 1;
-          }
-        }
-      }),
+      }, "secret text"),
       { code: "INSERTION_TARGET_BLOCKED" }
     );
-
-    assert.equal(clipboardCalls, 0);
   });
 
-  it("still copies when no editable target was focused", async () => {
-    let copiedText = "";
-
-    const result = await insertTextIntoCapturedTarget({ kind: "none" }, "final text", {
-      clipboard: {
-        writeText: async (text) => {
-          copiedText = text;
-        }
-      }
-    });
-
-    assert.equal(copiedText, "final text");
-    assert.equal(result.method, "clipboard");
-    assert.equal(result.fallbackReason, "INSERTION_TARGET_MISSING");
-  });
-
-  it("fails when neither target insertion nor clipboard fallback is available", async () => {
+  it("reports a missing target when no editable target was focused", async () => {
     await assert.rejects(
-      insertTextIntoCapturedTarget({ kind: "none" }, "text", {
-        clipboard: null,
-        documentRef: null
-      }),
-      { code: "INSERTION_AND_CLIPBOARD_FAILED" }
+      insertTextIntoCapturedTarget({ kind: "none" }, "text"),
+      { code: "INSERTION_TARGET_MISSING" }
     );
   });
 });
