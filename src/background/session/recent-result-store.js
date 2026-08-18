@@ -5,12 +5,14 @@ const RECENT_RESULT_STORAGE_KEY = "recentResult";
 /**
  * Stores only the latest recoverable dictation result for the popup.
  *
- * `chrome.storage.session` is temporary and service-worker-safe. Tests and
- * older browser contexts fall back to an in-memory copy.
+ * `chrome.storage.session` is temporary and service-worker-safe. The in-memory
+ * copy lets the current worker retain its latest value after a transient read
+ * failure.
  */
 export function createRecentResultStore({
   storageArea = getDefaultSessionStorageArea()
 } = {}) {
+  const sessionStorage = requireSessionStorageArea(storageArea);
   let memoryResult = null;
 
   return {
@@ -21,12 +23,8 @@ export function createRecentResultStore({
   };
 
   async function load() {
-    if (!storageArea) {
-      return memoryResult;
-    }
-
     try {
-      const stored = await storageArea.get({ [RECENT_RESULT_STORAGE_KEY]: null });
+      const stored = await sessionStorage.get({ [RECENT_RESULT_STORAGE_KEY]: null });
       memoryResult = normalizeRecentResult(stored?.[RECENT_RESULT_STORAGE_KEY]);
     } catch {
       return memoryResult;
@@ -39,10 +37,7 @@ export function createRecentResultStore({
     const result = normalizeRecentResult(value);
 
     memoryResult = result;
-
-    if (storageArea) {
-      await storageArea.set({ [RECENT_RESULT_STORAGE_KEY]: result });
-    }
+    await sessionStorage.set({ [RECENT_RESULT_STORAGE_KEY]: result });
 
     return result;
   }
@@ -58,15 +53,7 @@ export function createRecentResultStore({
 
   async function clear() {
     memoryResult = null;
-
-    if (storageArea?.remove) {
-      await storageArea.remove(RECENT_RESULT_STORAGE_KEY);
-      return;
-    }
-
-    if (storageArea) {
-      await storageArea.set({ [RECENT_RESULT_STORAGE_KEY]: null });
-    }
+    await sessionStorage.remove(RECENT_RESULT_STORAGE_KEY);
   }
 }
 
@@ -113,5 +100,15 @@ function normalizeRecentResult(value) {
 }
 
 function getDefaultSessionStorageArea() {
-  return globalThis.chrome?.storage?.session ?? null;
+  return globalThis.chrome?.storage?.session;
+}
+
+function requireSessionStorageArea(storageArea) {
+  if (typeof storageArea?.get !== "function"
+    || typeof storageArea.set !== "function"
+    || typeof storageArea.remove !== "function") {
+    throw new Error("chrome.storage.session is unavailable.");
+  }
+
+  return storageArea;
 }

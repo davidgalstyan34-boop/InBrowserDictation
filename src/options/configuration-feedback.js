@@ -35,7 +35,7 @@ export function getRequiredConfigurationErrors(settings) {
 }
 
 function getLlmKeyState(requirements) {
-  if (requirements.llmApiKey.bypassed) {
+  if (!requirements.llmApiKey.required) {
     return "optional";
   }
 

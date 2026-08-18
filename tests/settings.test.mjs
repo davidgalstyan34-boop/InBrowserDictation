@@ -146,7 +146,6 @@ describe("settings", () => {
     assert.equal(defaultRequirements.sttApiKey.configured, true);
     assert.equal(defaultRequirements.llmApiKey.required, true);
     assert.equal(defaultRequirements.llmApiKey.configured, false);
-    assert.equal(defaultRequirements.llmApiKey.bypassed, false);
 
     const rawRequirements = getConfigurationRequirements({
       ...DEFAULT_SETTINGS,
@@ -155,6 +154,5 @@ describe("settings", () => {
 
     assert.equal(rawRequirements.styleId, "raw");
     assert.equal(rawRequirements.llmApiKey.required, false);
-    assert.equal(rawRequirements.llmApiKey.bypassed, true);
   });
 });

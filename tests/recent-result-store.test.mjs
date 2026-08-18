@@ -7,6 +7,13 @@ import {
 } from "../src/background/session/recent-result-store.js";
 
 describe("recent result store", () => {
+  it("requires Chrome session storage", () => {
+    assert.throws(
+      () => createRecentResultStore({ storageArea: null }),
+      /chrome\.storage\.session is unavailable/
+    );
+  });
+
   it("creates a recoverable result before insertion has been attempted", () => {
     const result = createRecentResultFromSession({
       id: "session-inserting",

@@ -225,8 +225,7 @@ export function getConfigurationRequirements(settingsValue = {}) {
     },
     llmApiKey: {
       required: llmRequired,
-      configured: hasConfiguredApiKey(settings.llmApiKey),
-      bypassed: !llmRequired
+      configured: hasConfiguredApiKey(settings.llmApiKey)
     }
   };
 }
