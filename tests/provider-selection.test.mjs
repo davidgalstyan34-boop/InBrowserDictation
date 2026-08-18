@@ -10,6 +10,7 @@ import {
   SUPPORTED_LLM_PROVIDERS,
   SUPPORTED_STT_PROVIDERS
 } from "../src/shared/settings.js";
+import { createMemorySettingsStorage } from "./helpers/settings-storage.mjs";
 
 describe("provider selection", () => {
   it("offers exactly the providers it can actually run", () => {
@@ -28,7 +29,10 @@ describe("provider selection", () => {
   it("dispatches transcription on the stored provider", async () => {
     let requestedUrl = "";
     const client = createSpeechToTextClient({
-      storageArea: createStorage({ sttProvider: "deepgram", sttApiKey: "deepgram-key" }),
+      settingsStorage: createMemorySettingsStorage({
+        sttProvider: "deepgram",
+        sttApiKey: "deepgram-key"
+      }),
       fetchApi: async (url) => {
         requestedUrl = String(url);
         return new Response(JSON.stringify({
@@ -53,7 +57,10 @@ describe("provider selection", () => {
     // unsupported-provider guards are assertions rather than a reachable
     // user-facing path, and why the drift test above is the real protection.
     const client = createSpeechToTextClient({
-      storageArea: createStorage({ sttProvider: "whisper", sttApiKey: "whisper-key" }),
+      settingsStorage: createMemorySettingsStorage({
+        sttProvider: "whisper",
+        sttApiKey: "whisper-key"
+      }),
       fetchApi: async () => {
         throw new Error("No provider request should be attempted without a key.");
       }
@@ -67,9 +74,3 @@ describe("provider selection", () => {
     );
   });
 });
-
-function createStorage(overrides) {
-  return {
-    get: async (defaults) => ({ ...defaults, ...overrides })
-  };
-}

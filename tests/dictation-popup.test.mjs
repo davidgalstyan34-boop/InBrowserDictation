@@ -136,14 +136,14 @@ describe("dictation controller: popup surface", () => {
           tab: { id: 7 }
         });
 
-        storedSettings.defaultStyleId = "default";
-        storedSettings.llmApiKey = "";
+        await chromeApi.storage.sync.set({ defaultStyleId: "default" });
+        await chromeApi.storage.session.set({ llmApiKey: "" });
 
         const missingKey = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
         assert.equal(missingKey.ok, false);
         assert.equal(missingKey.error.code, "LLM_API_KEY_MISSING");
 
-        storedSettings.llmApiKey = "bad-gemini-key";
+        await chromeApi.storage.session.set({ llmApiKey: "bad-gemini-key" });
 
         const invalidKey = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
         assert.equal(invalidKey.ok, false);

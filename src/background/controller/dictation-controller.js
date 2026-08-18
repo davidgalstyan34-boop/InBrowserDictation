@@ -2,9 +2,9 @@ import { MessageType, parseMessageEnvelope } from "../../shared/messages.js";
 import { DictationStatus } from "../../shared/dictation-state.js";
 import {
   getConfigurationRequirements,
-  loadSettings,
   resolveRewriteStyle
 } from "../../shared/settings.js";
+import { loadSettings } from "../../shared/settings-store.js";
 import { createContentClient } from "../clients/content-client.js";
 import { createMicrophonePermissionClient } from "../clients/microphone-permission-client.js";
 import { createOffscreenRecorderClient } from "../clients/offscreen-recorder-client.js";
@@ -31,11 +31,11 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   const microphonePermission = createMicrophonePermissionClient({ chromeApi });
   const recorder = createOffscreenRecorderClient({ chromeApi, clientsApi });
   const speechToText = createSpeechToTextClient({
-    storageArea: chromeApi.storage?.sync,
+    settingsStorage: chromeApi.storage,
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
   const textImprovement = createTextImprovementClient({
-    storageArea: chromeApi.storage?.sync,
+    settingsStorage: chromeApi.storage,
     sessionStorageArea: chromeApi.storage?.session,
     fetchApi: globalThis.fetch?.bind(globalThis)
   });
@@ -329,7 +329,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
   async function buildPopupState() {
     const [settings, recentResult, shortcut] = await Promise.all([
-      loadSettings(chromeApi.storage?.sync),
+      loadSettings(chromeApi.storage),
       recentResults.load(),
       getToggleDictationShortcutState(chromeApi)
     ]);

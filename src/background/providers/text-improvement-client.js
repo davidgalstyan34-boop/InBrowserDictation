@@ -1,4 +1,5 @@
-import { loadSettings, resolveRewriteStyle } from "../../shared/settings.js";
+import { resolveRewriteStyle } from "../../shared/settings.js";
+import { loadSettings } from "../../shared/settings-store.js";
 import { createGeminiCompatibilityStore } from "./gemini-compatibility.js";
 import {
   DEFAULT_GEMINI_MODEL,
@@ -24,7 +25,7 @@ export const IMPLEMENTED_LLM_PROVIDERS = Object.freeze(Object.keys(IMPROVERS));
  * the raw-style bypass so the controller does not know provider details.
  */
 export function createTextImprovementClient({
-  storageArea = undefined,
+  settingsStorage = undefined,
   sessionStorageArea = undefined,
   fetchApi = globalThis.fetch?.bind(globalThis)
 } = {}) {
@@ -41,7 +42,7 @@ export function createTextImprovementClient({
    * Improves transcript text using the configured default style.
    */
   async function improveText({ text, signal = null } = {}) {
-    const settings = await loadTextImprovementSettings(storageArea);
+    const settings = await loadTextImprovementSettings(settingsStorage);
     const style = resolveRewriteStyle(settings);
 
     if (style.id === "raw") {
@@ -88,9 +89,9 @@ function isSupportedGeminiPair(model, requestShape) {
     && GEMINI_REQUEST_SHAPES.includes(requestShape);
 }
 
-async function loadTextImprovementSettings(storageArea) {
+async function loadTextImprovementSettings(settingsStorage) {
   try {
-    return await loadSettings(storageArea);
+    return await loadSettings(settingsStorage);
   } catch (error) {
     throw createTextImprovementError(
       "LLM_SETTINGS_UNAVAILABLE",

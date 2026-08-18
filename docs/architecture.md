@@ -310,6 +310,13 @@ Minimal settings:
 
 Built-in styles are code-defined and versioned. Custom styles are stored as normalized records with generated stable ids, display names, optional descriptions, and rewrite instructions. Built-ins remain code-defined and keep priority over custom ids.
 
+Settings are split by sensitivity and storage limits:
+
+- provider selection and the default style use `chrome.storage.sync`;
+- custom styles use `chrome.storage.local`, avoiding Sync's per-item quota for the combined instruction records;
+- provider API keys use memory-only `chrome.storage.session` and are cleared with the browser session or an extension reload, update, or disable;
+- all three areas are restricted to trusted extension contexts because content scripts do not own settings behavior.
+
 The popup can clear the stored result on demand, so a user does not have to wait for the browser session to end to take it out of storage.
 
 The latest result is stored temporarily in `chrome.storage.session`. It includes only the final text, raw transcript, and derived final-text length needed by the popup. It does not build a history.
@@ -346,7 +353,7 @@ Popup:
 
 - Do not commit secrets.
 - Do not log API keys.
-- Store user-entered keys in extension storage for this take-home version.
+- Keep user-entered keys in trusted-context, memory-only session storage for this take-home version.
 - Document that production credentials should be backend-protected.
 - Be explicit that audio goes to STT and transcript text goes to LLM.
 - Gemini free-tier content may be used to improve Google products; use paid-tier Gemini credentials or a backend proxy for stricter data handling.

@@ -1,11 +1,16 @@
 import { createDictationController } from "./controller/dictation-controller.js";
 import { createCommandDiagnostics } from "./diagnostics/command-diagnostics.js";
+import { restrictSettingsStorageAccess } from "../shared/settings-store.js";
 
 // Manifest V3 service worker entrypoint.
 //
 // Keep this file intentionally thin: Chrome event registration belongs here,
 // while dictation lifecycle, session state, tab messaging, and offscreen
 // recorder details live in delegated background modules.
+void restrictSettingsStorageAccess(chrome.storage).catch((error) => {
+  console.warn("[In-Browser Dictation] Could not restrict settings storage access.", error);
+});
+
 const dictationController = createDictationController({
   chromeApi: chrome,
   clientsApi: globalThis.clients,

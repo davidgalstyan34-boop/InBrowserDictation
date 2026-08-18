@@ -1,4 +1,4 @@
-import { loadSettings } from "../../shared/settings.js";
+import { loadSettings } from "../../shared/settings-store.js";
 import { audioPayloadToBlob } from "./audio-payload.js";
 import {
   createSpeechToTextError,
@@ -28,7 +28,7 @@ export const IMPLEMENTED_STT_PROVIDERS = Object.freeze(Object.keys(TRANSCRIBERS)
  * dictation lifecycle code.
  */
 export function createSpeechToTextClient({
-  storageArea = undefined,
+  settingsStorage = undefined,
   fetchApi = globalThis.fetch?.bind(globalThis)
 } = {}) {
   return {
@@ -39,7 +39,7 @@ export function createSpeechToTextClient({
    * Loads user settings and transcribes the recorded audio payload.
    */
   async function transcribe({ audio, signal = null } = {}) {
-    const settings = await loadSpeechToTextSettings(storageArea);
+    const settings = await loadSpeechToTextSettings(settingsStorage);
     const transcribeWithProvider = TRANSCRIBERS[settings.sttProvider];
 
     if (!transcribeWithProvider) {
@@ -65,9 +65,9 @@ export function createSpeechToTextClient({
   }
 }
 
-async function loadSpeechToTextSettings(storageArea) {
+async function loadSpeechToTextSettings(settingsStorage) {
   try {
-    return await loadSettings(storageArea);
+    return await loadSettings(settingsStorage);
   } catch (error) {
     throw createSpeechToTextError(
       "STT_SETTINGS_UNAVAILABLE",

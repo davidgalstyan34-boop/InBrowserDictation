@@ -1,4 +1,5 @@
 import { MessageType, createEnvelope } from "../../src/shared/messages.js";
+import { createMemorySettingsStorage } from "./settings-storage.mjs";
 
 // Shared fixtures for the dictation-controller suites. The controller needs a
 // fairly complete Chrome stand-in, so it is built once here rather than in each
@@ -23,6 +24,7 @@ export function createChromeApi({
   let offscreenDocumentExists = false;
   let closeDocumentCount = 0;
   const extensionOrigin = "chrome-extension://test/";
+  const storage = createMemorySettingsStorage(storedSettings);
 
   return {
     queryCount: () => queryCount,
@@ -78,15 +80,7 @@ export function createChromeApi({
       },
       hasDocument: async () => offscreenDocumentExists
     },
-    storage: {
-      sync: {
-        get: async (defaults) => ({
-          ...defaults,
-          ...storedSettings
-        }),
-        set: async () => {}
-      }
-    },
+    storage,
     scripting: {
       executeScript: async () => {}
     },

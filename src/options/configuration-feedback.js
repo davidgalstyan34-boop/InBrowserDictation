@@ -10,10 +10,10 @@ export function syncConfigurationFeedback(elements, settings) {
   setKeyState(elements.llmKeyState, getLlmKeyState(requirements));
 
   elements.llmApiKey.required = requirements.llmApiKey.required;
-  elements.sttApiKeyHelp.textContent = "Required before dictation can transcribe audio.";
+  elements.sttApiKeyHelp.textContent = "Required before dictation can transcribe audio. Kept only for this Chrome session.";
   elements.llmApiKeyHelp.textContent = requirements.llmApiKey.required
-    ? "Required for the selected style. Choose Raw to skip Gemini."
-    : "Optional while Raw is selected; Gemini will be skipped.";
+    ? "Required for the selected style and kept only for this Chrome session. Choose Raw to skip Gemini."
+    : "Optional while Raw is selected; any saved key remains only for this Chrome session.";
 }
 
 /**

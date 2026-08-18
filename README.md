@@ -49,7 +49,7 @@ Open the extension options page and save:
 
 The Gemini key is optional when the selected style is Raw because that path skips text improvement.
 
-Keys are stored with `chrome.storage.sync` for this take-home implementation. A production version should protect provider credentials behind a backend or authenticated service.
+Provider keys are kept in memory with `chrome.storage.session`, are restricted to trusted extension contexts, and must be entered again after Chrome restarts or the extension reloads, updates, or is disabled. Ordinary preferences remain in `chrome.storage.sync`; custom styles use `chrome.storage.local` so their combined instructions cannot exceed Sync's per-item quota. A production version should protect provider credentials behind a backend or authenticated service.
 
 ## Usage
 
@@ -81,7 +81,7 @@ The latest successful result is kept temporarily in `chrome.storage.session` for
 
 Permissions used today:
 
-- `storage`: saves provider keys and the default style in extension storage.
+- `storage`: keeps session-only provider keys, synchronized preferences, local custom styles, and the temporary latest-result recovery record.
 - `offscreen`: records microphone audio from an offscreen document because the service worker cannot own media APIs.
 - `activeTab` and `scripting`: inject the content script into the active tab after an unpacked extension reload when the static listener is missing.
 - `clipboardWrite`: copies final text when the captured DOM target cannot be safely written.
@@ -92,6 +92,7 @@ Permissions used today:
 
 - Requires a saved Deepgram API key before transcription can complete.
 - Requires a saved Gemini API key for non-Raw text improvement styles.
+- Provider keys must be entered again after Chrome restarts or the extension reloads, updates, or is disabled.
 - Rich editor support now tries the browser editor `insertText` command before range insertion, but complex editors may still fall back to clipboard.
 - Editors behind a closed shadow root cannot be reached; focus resolution stops at the shadow host.
 - Recording is capped at five minutes per session.

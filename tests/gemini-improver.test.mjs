@@ -7,6 +7,7 @@ import {
   extractGeminiOutputText,
   improveTextWithGemini
 } from "../src/background/providers/gemini-improver.js";
+import { createMemorySettingsStorage } from "./helpers/settings-storage.mjs";
 import { buildTextImprovementPrompt } from "../src/background/providers/text-improvement-prompts.js";
 import { createTextImprovementClient } from "../src/background/providers/text-improvement-client.js";
 import { DEFAULT_SETTINGS } from "../src/shared/settings.js";
@@ -480,13 +481,11 @@ describe("Gemini text improver", () => {
 
   it("bypasses provider calls when the Raw style is selected", async () => {
     const client = createTextImprovementClient({
-      storageArea: {
-        get: async () => ({
-          ...DEFAULT_SETTINGS,
-          defaultStyleId: "raw",
-          llmApiKey: ""
-        })
-      },
+      settingsStorage: createMemorySettingsStorage({
+        ...DEFAULT_SETTINGS,
+        defaultStyleId: "raw",
+        llmApiKey: ""
+      }),
       fetchApi: async () => {
         throw new Error("Raw style should not call the provider.");
       }

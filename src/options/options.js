@@ -1,4 +1,9 @@
-import { loadSettings, saveSettings, validateSettings } from "../shared/settings.js";
+import { validateSettings } from "../shared/settings.js";
+import {
+  loadSettings,
+  restrictSettingsStorageAccess,
+  saveSettings
+} from "../shared/settings-store.js";
 import { syncConfigurationFeedback, getRequiredConfigurationErrors } from "./configuration-feedback.js";
 import { createCustomStyleController } from "./custom-style-control.js";
 import { createFieldErrorPresenter } from "./field-errors.js";
@@ -26,6 +31,7 @@ async function initializeOptionsPage() {
   registerEvents();
 
   try {
+    await restrictSettingsStorageAccess();
     const settings = await loadSettings();
     renderLoadedSettings(settings);
   } catch (error) {

@@ -16,7 +16,7 @@ describe("settings", () => {
     assert.deepEqual(normalizeSettings({}), DEFAULT_SETTINGS);
   });
 
-  it("repairs obsolete provider values to current defaults", () => {
+  it("repairs unsupported provider values to current defaults", () => {
     assert.deepEqual(normalizeSettings({
       sttProvider: "deepgram",
       sttApiKey: "deepgram-key",
@@ -41,7 +41,7 @@ describe("settings", () => {
     });
   });
 
-  it("keeps keys when old settings omitted provider fields", () => {
+  it("keeps keys when provider fields are absent and defaults apply", () => {
     assert.deepEqual(normalizeSettings({
       sttApiKey: "deepgram-key",
       llmApiKey: "gemini-key"

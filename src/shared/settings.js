@@ -73,17 +73,16 @@ export function normalizeSettings(value = {}) {
     SUPPORTED_LLM_PROVIDERS,
     DEFAULT_SETTINGS.llmProvider
   );
-  const obsoleteSttProvider = typeof value.sttProvider === "string" && value.sttProvider !== sttProvider;
-  const obsoleteLlmProvider = typeof value.llmProvider === "string" && value.llmProvider !== llmProvider;
+  const unsupportedSttProvider = typeof value.sttProvider === "string" && value.sttProvider !== sttProvider;
+  const unsupportedLlmProvider = typeof value.llmProvider === "string" && value.llmProvider !== llmProvider;
 
-  // Only known keys are carried forward. Spreading the stored value would keep
-  // fields from older builds alive forever, because saving writes the
-  // normalized object straight back to storage.
+  // Only known keys are returned so unrelated storage values cannot become
+  // part of the validated settings object.
   return {
     sttProvider,
-    sttApiKey: obsoleteSttProvider ? "" : normalizeApiKey(value.sttApiKey),
+    sttApiKey: unsupportedSttProvider ? "" : normalizeApiKey(value.sttApiKey),
     llmProvider,
-    llmApiKey: obsoleteLlmProvider ? "" : normalizeApiKey(value.llmApiKey),
+    llmApiKey: unsupportedLlmProvider ? "" : normalizeApiKey(value.llmApiKey),
     defaultStyleId: typeof value.defaultStyleId === "string"
       ? value.defaultStyleId
       : DEFAULT_SETTINGS.defaultStyleId,
@@ -230,36 +229,6 @@ export function getConfigurationRequirements(settingsValue = {}) {
       bypassed: !llmRequired
     }
   };
-}
-
-/**
- * Loads settings from Chrome storage, or from an injected storage adapter in
- * tests.
- */
-export async function loadSettings(storageArea = getDefaultStorageArea()) {
-  const stored = await storageArea.get(DEFAULT_SETTINGS);
-  return normalizeSettings(stored);
-}
-
-/**
- * Validates and persists settings to Chrome storage.
- */
-export async function saveSettings(nextSettings, storageArea = getDefaultStorageArea()) {
-  const validation = validateSettings(nextSettings);
-  if (!validation.ok) {
-    return validation;
-  }
-
-  await storageArea.set(validation.settings);
-  return validation;
-}
-
-function getDefaultStorageArea() {
-  const storageArea = globalThis.chrome?.storage?.sync;
-  if (!storageArea) {
-    throw new Error("chrome.storage.sync is unavailable.");
-  }
-  return storageArea;
 }
 
 function isCompleteCustomStyle(style) {
