@@ -138,6 +138,44 @@ describe("dictation controller: session lifecycle", () => {
     });
   });
 
+  it("refuses to record when the Deepgram key is missing", async () => {
+    await withMutedConsole(async () => {
+      const tabMessages = [];
+      const runtimeMessages = [];
+      const chromeApi = createChromeApi({
+        storedSettings: { sttApiKey: "" },
+        tabMessages,
+        runtimeSendMessage: async (message) => {
+          runtimeMessages.push(message);
+          return { ok: true };
+        }
+      });
+      const controller = createDictationController({
+        chromeApi,
+        clientsApi: null,
+        cryptoApi: {
+          randomUUID: () => "session-missing-deepgram-key"
+        }
+      });
+
+      await controller.handleCommand("toggle-dictation", { tab: { id: 7 } });
+
+      assert.equal(
+        tabMessages.some(({ message }) => message.type === MessageType.CONTENT_PREPARE_DICTATION),
+        false
+      );
+      assert.equal(
+        runtimeMessages.some((message) => message.type === MessageType.OFFSCREEN_START_RECORDING),
+        false
+      );
+
+      const session = await getPublicSession(controller);
+      assert.equal(session.status, DictationStatus.ERROR);
+      assert.equal(session.error.code, "STT_API_KEY_MISSING");
+      assert.match(session.error.message, /Deepgram API key/i);
+    });
+  });
+
   it("refuses to record when the page reports a blocked field", async () => {
     await withMutedConsole(async () => {
       const tabMessages = [];

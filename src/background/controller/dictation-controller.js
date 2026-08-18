@@ -69,6 +69,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
     sessions,
     recordingFlow,
     processingFlow,
+    loadConfigurationRequirements,
     cryptoApi,
     failSession
   });
@@ -346,6 +347,13 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       },
       shortcut
     };
+  }
+
+  /**
+   * Loads the current credential requirements for command-start preflight.
+   */
+  async function loadConfigurationRequirements() {
+    return getConfigurationRequirements(await loadSettings(chromeApi.storage));
   }
 
   async function retryRecentImprovementInternal() {

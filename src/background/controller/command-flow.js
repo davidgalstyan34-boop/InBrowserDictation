@@ -12,6 +12,7 @@ export function createCommandFlow({
   sessions,
   recordingFlow,
   processingFlow,
+  loadConfigurationRequirements,
   cryptoApi,
   failSession
 }) {
@@ -117,6 +118,7 @@ export function createCommandFlow({
     }
 
     try {
+      await assertTranscriptionConfigured();
       const preparedSession = await recordingFlow.prepareSessionForRecording(session, tab.id);
       if (!preparedSession) {
         return;
@@ -132,6 +134,20 @@ export function createCommandFlow({
 
       await failSession(session.id, error.code || "DICTATION_START_FAILED", error.message);
     }
+  }
+
+  /**
+   * Rejects recording when its audio could not be transcribed afterward.
+   */
+  async function assertTranscriptionConfigured() {
+    const requirements = await loadConfigurationRequirements();
+    if (requirements?.sttApiKey?.configured) {
+      return;
+    }
+
+    const error = new Error("Add a Deepgram API key in extension settings before starting dictation.");
+    error.code = "STT_API_KEY_MISSING";
+    throw error;
   }
 
   /**

@@ -13,7 +13,7 @@ export function createChromeApi({
     }
   ],
   contexts = null,
-  storedSettings = {},
+  storedSettings = { sttApiKey: "deepgram-key" },
   tabMessages,
   runtimeSendMessage,
   insertTextResponse = null,

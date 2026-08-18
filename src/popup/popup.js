@@ -101,6 +101,7 @@ function renderPopupState(state) {
   const status = state?.session?.status ?? "IDLE";
   const recentResult = state?.recentResult ?? null;
   const shortcutState = normalizeShortcutState(state?.shortcut);
+  const hasTranscriptionKey = Boolean(state?.configuration?.sttApiKey?.configured);
   const canCopyFinal = Boolean(recentResult?.finalText);
   const canCopyRaw = Boolean(recentResult?.rawTranscript);
   const canRetry = canCopyRaw && canRetryDuringStatus(status);
@@ -118,7 +119,8 @@ function renderPopupState(state) {
   elements.shortcutSettingsButton.disabled = shortcutState.assigned;
 
   elements.toggleButton.textContent = getToggleButtonLabel(status);
-  elements.toggleButton.disabled = !canToggleStatus(status);
+  elements.toggleButton.disabled = !canToggleStatus(status)
+    || (status !== "RECORDING" && !hasTranscriptionKey);
 
   // A busy session has no keyboard escape: the shortcut only reports "busy".
   // This is the one control that can release it without waiting for a timeout.
