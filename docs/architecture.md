@@ -183,7 +183,7 @@ First-run microphone flow:
 STARTING(target captured) -> WAITING_FOR_MICROPHONE -> RECORDING
 ```
 
-Chrome requires the first microphone grant to come from a visible extension page. The service worker opens `permissions/microphone.html`, that page calls `getUserMedia({ audio: true })`, stops the test stream immediately, then reports the result back to the service worker.
+Chrome requires the first microphone grant to come from a visible extension page. The service worker opens `permissions/microphone.html`, that page calls `getUserMedia({ audio: true })`, stops the test stream immediately, then reports the result back to the service worker. A denied Permissions API state avoids a request that cannot prompt again, while every other state is verified with `getUserMedia()` because macOS can block Chrome itself even when Chrome reports the extension origin as granted. Denial changes the page action to Go to settings and opens `chrome://settings/content/microphone` for recovery.
 
 Two failure modes are handled explicitly, because both otherwise park the session in `WAITING_FOR_MICROPHONE` with no way out:
 

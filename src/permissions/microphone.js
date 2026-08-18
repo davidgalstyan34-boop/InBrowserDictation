@@ -1,5 +1,9 @@
-import { normalizeRecordingError } from "../shared/audio-recording.js";
 import { MessageType, createEnvelope } from "../shared/messages.js";
+import {
+  MicrophoneAccessState,
+  openChromeMicrophoneSettings,
+  requestMicrophoneAccess
+} from "./microphone-access.js";
 
 const requestButton = document.querySelector("#request-microphone");
 const statusElement = document.querySelector("#permission-status");
@@ -11,8 +15,14 @@ const tabId = Number.parseInt(pageParameters.get("tabId") ?? "", 10);
 // reports back. Closing the window without choosing would otherwise leave that
 // session waiting forever, and every later shortcut press would report "busy".
 let reportedResult = false;
+let permissionState = "requestable";
 
 requestButton.addEventListener("click", () => {
+  if (permissionState === MicrophoneAccessState.DENIED) {
+    void openMicrophoneSettings();
+    return;
+  }
+
   void requestMicrophonePermission();
 });
 
@@ -48,28 +58,54 @@ void requestMicrophonePermission();
  * is granted for the extension origin, the offscreen recorder can use it.
  */
 async function requestMicrophonePermission() {
+  permissionState = "requesting";
   requestButton.disabled = true;
+  requestButton.textContent = "Allow Microphone";
   statusElement.textContent = "Chrome should show a microphone permission prompt.";
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    stopTracks(stream);
+  const result = await requestMicrophoneAccess({
+    mediaDevices: navigator.mediaDevices,
+    permissionsApi: navigator.permissions
+  });
 
+  if (result.state === MicrophoneAccessState.GRANTED) {
+    stopTracks(result.stream);
     await notifyBackground({
       granted: true
     });
 
+    permissionState = MicrophoneAccessState.GRANTED;
     statusElement.textContent = "Microphone access granted. Recording will continue on the original page.";
     window.setTimeout(() => window.close(), 900);
+    return;
+  }
+
+  permissionState = result.state;
+  statusElement.textContent = result.error.message;
+  requestButton.disabled = false;
+
+  if (result.state === MicrophoneAccessState.DENIED) {
+    requestButton.textContent = "Go to settings";
+  }
+
+  await notifyBackground({
+    granted: false,
+    error: result.error
+  });
+}
+
+/**
+ * Opens Chrome's microphone settings for both site-level and system-level
+ * recovery. On macOS, Chrome exposes the operating-system access problem from
+ * this page even when the extension origin itself is already allowed.
+ */
+async function openMicrophoneSettings() {
+  requestButton.disabled = true;
+
+  try {
+    await openChromeMicrophoneSettings(chrome);
   } catch (error) {
-    const normalizedError = normalizeRecordingError(error);
-
-    await notifyBackground({
-      granted: false,
-      error: normalizedError
-    });
-
-    statusElement.textContent = normalizedError.message;
+    statusElement.textContent = error?.message || "Chrome microphone settings could not be opened.";
     requestButton.disabled = false;
   }
 }

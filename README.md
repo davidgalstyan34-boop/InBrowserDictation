@@ -65,7 +65,7 @@ Password and hidden fields are never dictation targets. Focusing one and pressin
 
 If the captured target is gone, stale, or no editable target was focused, the extension copies the final text to the clipboard when Chrome allows it. If both insertion and the clipboard fail, the text is still recoverable from the popup, and the page overlay says so. If the selected style is Raw, the extension skips the Gemini call and inserts or copies the Deepgram transcript unchanged. If Gemini text improvement fails after STT succeeds, the session inserts or copies the raw transcript and shows a warning instead of failing the dictation.
 
-On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page.
+On first use, Chrome may open a small extension window to request microphone access. Allow access there; the window releases the test stream immediately and recording continues from the original page. If access was previously denied by Chrome or by the operating system, the window shows a Go to settings button that opens Chrome's microphone settings.
 
 The toolbar popup is optional. It shows current status, selected style, Chrome's active shortcut assignment, and the latest successful result. If Chrome leaves the shortcut unassigned, the popup shows a warning with a Set Shortcut button that opens `chrome://extensions/shortcuts`. From the popup you can copy the final result, copy the raw transcript, retry the rewrite from the stored raw transcript, clear the stored result, or open settings. While a session is mid-flight the popup also offers Cancel, which is the only way to abandon a session that the shortcut reports as busy.
 
@@ -104,4 +104,4 @@ If the service worker logs `CONTENT_MODULE_LOAD_FAILED` or `Failed to fetch dyna
 
 If the service worker logs `Receiving end does not exist`, the active tab did not have the content script loaded. The command path now retries by injecting the content script into the active tab; this still cannot work on restricted pages such as `chrome://` URLs.
 
-If the service worker logs `MICROPHONE_PERMISSION_DENIED`, use the microphone permission window opened by the extension. If you denied access previously, reset the extension's microphone permission in Chrome site settings for the `chrome-extension://` origin or reload the unpacked extension and try again.
+If the service worker logs `MICROPHONE_PERMISSION_DENIED`, use the Go to settings button in the microphone permission window. Allow the extension origin in Chrome and make sure Chrome itself has microphone access in the operating system, then retry dictation.
