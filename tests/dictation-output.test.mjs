@@ -201,7 +201,7 @@ describe("dictation controller: output and fallback", () => {
 
         const retry = await sendRuntimeMessage(controller, MessageType.RUNTIME_RETRY_RECENT_IMPROVEMENT);
         assert.equal(retry.recentResult.finalText, "Retried polished result.");
-        assert.equal(retry.recentResult.insertion.method, "popup-retry");
+        assert.equal(retry.recentResult.finalTextLength, "Retried polished result.".length);
       } finally {
         globalThis.fetch = originalFetch;
       }

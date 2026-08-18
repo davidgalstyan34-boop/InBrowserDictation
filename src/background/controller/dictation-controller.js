@@ -106,7 +106,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
   /**
    * Handles runtime messages owned by the background context.
    */
-  function handleRuntimeMessage({ rawMessage, sender, sendResponse }) {
+  function handleRuntimeMessage({ rawMessage, sendResponse }) {
     const message = parseMessageEnvelope(rawMessage);
     const handler = message ? runtimeMessageHandlers[message.type] : null;
 
@@ -114,7 +114,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
       return false;
     }
 
-    return handler({ message, sender, sendResponse });
+    return handler({ message, sendResponse });
   }
 
   /**
@@ -369,19 +369,7 @@ export function createDictationController({ chromeApi, clientsApi, cryptoApi }) 
 
     return await recentResults.save({
       ...recentResult,
-      finalText: improvement.text,
-      outputSource: improvement.source ?? "llm",
-      styleId: improvement.styleId ?? recentResult.styleId,
-      warning: null,
-      insertion: {
-        method: "popup-retry",
-        strategy: null,
-        targetKind: "popup",
-        textLength: improvement.text.length,
-        fallbackReason: null
-      },
-      completedAt: Date.now(),
-      capturedAt: Date.now()
+      finalText: improvement.text
     });
   }
 }

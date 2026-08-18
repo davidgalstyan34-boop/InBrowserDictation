@@ -16,15 +16,11 @@ describe("recent result store", () => {
         text: "Final transcript.",
         source: "llm",
         styleId: "default"
-      },
-      insertion: null,
-      warning: null,
-      updatedAt: 2000
-    }, () => 3000);
+      }
+    });
 
     assert.equal(result.finalText, "Final transcript.");
     assert.equal(result.rawTranscript, "raw transcript");
-    assert.equal(result.insertion, null);
   });
 
   it("ignores sessions that have not produced final text yet", () => {
@@ -53,42 +49,20 @@ describe("recent result store", () => {
         text: "Final transcript.",
         source: "llm",
         styleId: "default"
-      },
-      insertion: {
-        method: "target",
-        targetKind: "textarea",
-        textLength: 17
-      },
-      warning: null,
-      updatedAt: 2000
-    }, () => 3000);
+      }
+    });
 
     assert.deepEqual(result, {
-      sessionId: "session-1",
       rawTranscript: "raw transcript",
-      rawTextLength: 14,
       finalText: "Final transcript.",
-      finalTextLength: 17,
-      outputSource: "llm",
-      styleId: "default",
-      warning: null,
-      insertion: {
-        method: "target",
-        strategy: null,
-        targetKind: "textarea",
-        textLength: 17,
-        fallbackReason: null
-      },
-      completedAt: 2000,
-      capturedAt: 3000
+      finalTextLength: 17
     });
   });
 
   it("persists only the latest result through the provided temporary storage", async () => {
     const storage = createMemoryStorage();
     const store = createRecentResultStore({
-      storageArea: storage,
-      now: () => 4000
+      storageArea: storage
     });
 
     await store.save({

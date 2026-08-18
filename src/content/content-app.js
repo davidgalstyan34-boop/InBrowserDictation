@@ -21,7 +21,7 @@ const messageHandlers = Object.freeze({
  * The service worker receives only serializable target summaries. Live element
  * and Range references remain in this module for later insertion.
  */
-export function handleRuntimeMessage({ rawMessage, sender, sendResponse }) {
+export function handleRuntimeMessage({ rawMessage, sendResponse }) {
   const message = parseMessageEnvelope(rawMessage);
   const handler = message ? messageHandlers[message.type] : null;
 
@@ -30,7 +30,7 @@ export function handleRuntimeMessage({ rawMessage, sender, sendResponse }) {
     return;
   }
 
-  handler({ message, sender, sendResponse });
+  handler({ message, sendResponse });
 }
 
 /**
@@ -53,8 +53,7 @@ function prepareDictation({ message, sendResponse }) {
   const target = captureActiveTarget();
   capturedTargetState = {
     sessionId: message.sessionId,
-    target,
-    capturedAt: Date.now()
+    target
   };
 
   sendResponse({

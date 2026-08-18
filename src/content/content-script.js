@@ -20,7 +20,7 @@ const CONTENT_PREPARE_DICTATION = "content.prepareDictation";
 const CONTENT_INSERT_TEXT = "content.insertText";
 const CONTENT_DISMISS_OVERLAY = "content.dismissOverlay";
 
-chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
   if (!shouldHandleInThisFrame(rawMessage)) {
     return false;
   }
@@ -35,7 +35,7 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
 
   loadContentAppModule()
     .then(({ handleRuntimeMessage }) => {
-      handleRuntimeMessage({ rawMessage, sender, sendResponse });
+      handleRuntimeMessage({ rawMessage, sendResponse });
     })
     .catch((error) => {
       sendResponse({

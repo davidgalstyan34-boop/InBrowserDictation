@@ -139,7 +139,6 @@ export function createProcessingFlow({
       return;
     }
 
-    await saveRecentResult(completedSession);
     await showInsertionCompleteState(content, completedSession);
   }
 

@@ -205,7 +205,6 @@ function mountOverlay() {
   overlayRoot.append(style, panel);
   overlayElements = {
     panel,
-    indicator: indicatorElement,
     title: titleElement,
     detail: detailElement
   };

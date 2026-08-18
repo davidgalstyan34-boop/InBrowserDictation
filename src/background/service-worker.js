@@ -26,8 +26,8 @@ chrome.commands.onCommand.addListener((command, tab) => {
   });
 });
 
-chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => (
-  dictationController.handleRuntimeMessage({ rawMessage, sender, sendResponse })
+chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => (
+  dictationController.handleRuntimeMessage({ rawMessage, sendResponse })
 ));
 
 chrome.tabs.onRemoved.addListener((tabId) => {

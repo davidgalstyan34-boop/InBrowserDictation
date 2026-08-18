@@ -108,7 +108,6 @@ export function sendOffscreenMessage(controller, type, sessionId) {
   return new Promise((resolve) => {
     controller.handleRuntimeMessage({
       rawMessage: createEnvelope(type, {}, sessionId),
-      sender: {},
       sendResponse: resolve
     });
   });
@@ -122,7 +121,6 @@ export function sendPermissionResult(controller, sessionId, payload) {
         payload,
         sessionId
       ),
-      sender: {},
       sendResponse: resolve
     });
   });
@@ -132,7 +130,6 @@ export function sendRuntimeMessage(controller, type, payload = {}) {
   return new Promise((resolve) => {
     controller.handleRuntimeMessage({
       rawMessage: createEnvelope(type, payload),
-      sender: {},
       sendResponse: resolve
     });
   });

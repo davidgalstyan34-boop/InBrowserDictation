@@ -37,8 +37,7 @@ export function createEnvelope(type, payload = {}, sessionId = null) {
     protocolVersion: PROTOCOL_VERSION,
     type,
     sessionId,
-    payload,
-    sentAt: Date.now()
+    payload
   };
 }
 

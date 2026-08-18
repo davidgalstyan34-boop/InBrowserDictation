@@ -3,14 +3,13 @@ import { DictationStatus } from "../../shared/dictation-state.js";
 const RECENT_RESULT_STORAGE_KEY = "recentResult";
 
 /**
- * Stores only the latest successful dictation result for popup recovery.
+ * Stores only the latest recoverable dictation result for the popup.
  *
  * `chrome.storage.session` is temporary and service-worker-safe. Tests and
  * older browser contexts fall back to an in-memory copy.
  */
 export function createRecentResultStore({
-  storageArea = getDefaultSessionStorageArea(),
-  now = () => Date.now()
+  storageArea = getDefaultSessionStorageArea()
 } = {}) {
   let memoryResult = null;
 
@@ -37,10 +36,7 @@ export function createRecentResultStore({
   }
 
   async function save(value) {
-    const result = normalizeRecentResult({
-      ...value,
-      capturedAt: Number.isFinite(value?.capturedAt) ? value.capturedAt : now()
-    });
+    const result = normalizeRecentResult(value);
 
     memoryResult = result;
 
@@ -52,7 +48,7 @@ export function createRecentResultStore({
   }
 
   async function saveFromSession(session) {
-    const result = createRecentResultFromSession(session, now);
+    const result = createRecentResultFromSession(session);
     if (!result) {
       return null;
     }
@@ -82,23 +78,14 @@ export function createRecentResultStore({
  * refuses), and that is exactly when the user needs the popup to still hold the
  * text. Waiting for SUCCESS would save a record only when it is least needed.
  */
-export function createRecentResultFromSession(session, now = () => Date.now()) {
+export function createRecentResultFromSession(session) {
   if (!hasRecoverableOutput(session)) {
     return null;
   }
 
   return normalizeRecentResult({
-    sessionId: session.id,
     rawTranscript: session.transcription?.transcript ?? "",
-    finalText: session.outputText.text,
-    outputSource: session.outputText.source,
-    styleId: session.outputText.styleId,
-    warning: session.warning,
-    insertion: session.insertion,
-    // The session tracks when it last changed; for a session that has produced
-    // final text, that is when the result was completed.
-    completedAt: session.updatedAt,
-    capturedAt: now()
+    finalText: session.outputText.text
   });
 }
 
@@ -109,7 +96,7 @@ function hasRecoverableOutput(session) {
   return producedFinalText && Boolean(session.outputText?.text);
 }
 
-export function normalizeRecentResult(value) {
+function normalizeRecentResult(value) {
   if (!value || typeof value.finalText !== "string" || value.finalText.length === 0) {
     return null;
   }
@@ -119,31 +106,9 @@ export function normalizeRecentResult(value) {
     : "";
 
   return {
-    sessionId: typeof value.sessionId === "string" ? value.sessionId : null,
     rawTranscript,
-    rawTextLength: rawTranscript.length,
     finalText: value.finalText,
-    finalTextLength: value.finalText.length,
-    outputSource: typeof value.outputSource === "string" ? value.outputSource : "unknown",
-    styleId: typeof value.styleId === "string" ? value.styleId : null,
-    warning: value.warning ?? null,
-    insertion: normalizeInsertion(value.insertion),
-    completedAt: Number.isFinite(value.completedAt) ? value.completedAt : null,
-    capturedAt: Number.isFinite(value.capturedAt) ? value.capturedAt : null
-  };
-}
-
-function normalizeInsertion(insertion) {
-  if (!insertion || typeof insertion !== "object") {
-    return null;
-  }
-
-  return {
-    method: typeof insertion.method === "string" ? insertion.method : "unknown",
-    strategy: typeof insertion.strategy === "string" ? insertion.strategy : null,
-    targetKind: typeof insertion.targetKind === "string" ? insertion.targetKind : null,
-    textLength: Number.isInteger(insertion.textLength) ? insertion.textLength : 0,
-    fallbackReason: typeof insertion.fallbackReason === "string" ? insertion.fallbackReason : null
+    finalTextLength: value.finalText.length
   };
 }
 

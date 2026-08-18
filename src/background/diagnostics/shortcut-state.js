@@ -4,13 +4,12 @@
  * Manifest `suggested_key` is only a suggestion. The popup needs the runtime
  * command state because Chrome can install the command with an empty shortcut.
  */
-export const TOGGLE_DICTATION_COMMAND = "toggle-dictation";
-export const TOGGLE_DICTATION_SUGGESTED_SHORTCUT = "Ctrl+Shift+Space / Command+Shift+Space";
-export const SHORTCUT_SETTINGS_URL = "chrome://extensions/shortcuts";
+const TOGGLE_DICTATION_COMMAND = "toggle-dictation";
+const TOGGLE_DICTATION_SUGGESTED_SHORTCUT = "Ctrl+Shift+Space / Command+Shift+Space";
+const SHORTCUT_SETTINGS_URL = "chrome://extensions/shortcuts";
 
 export async function getToggleDictationShortcutState(chromeApi) {
   const baseState = {
-    commandName: TOGGLE_DICTATION_COMMAND,
     suggested: TOGGLE_DICTATION_SUGGESTED_SHORTCUT,
     settingsUrl: SHORTCUT_SETTINGS_URL
   };
@@ -20,8 +19,7 @@ export async function getToggleDictationShortcutState(chromeApi) {
       ...baseState,
       assigned: true,
       shortcut: TOGGLE_DICTATION_SUGGESTED_SHORTCUT,
-      status: "unknown",
-      canInspect: false
+      status: "unknown"
     };
   }
 
@@ -34,8 +32,7 @@ export async function getToggleDictationShortcutState(chromeApi) {
         ...baseState,
         assigned: false,
         shortcut: "",
-        status: "missing-command",
-        canInspect: true
+        status: "missing-command"
       };
     }
 
@@ -43,16 +40,14 @@ export async function getToggleDictationShortcutState(chromeApi) {
       ...baseState,
       assigned: Boolean(command.shortcut),
       shortcut: command.shortcut || "",
-      status: command.shortcut ? "assigned" : "unassigned",
-      canInspect: true
+      status: command.shortcut ? "assigned" : "unassigned"
     };
   } catch {
     return {
       ...baseState,
       assigned: true,
       shortcut: TOGGLE_DICTATION_SUGGESTED_SHORTCUT,
-      status: "unknown",
-      canInspect: false
+      status: "unknown"
     };
   }
 }

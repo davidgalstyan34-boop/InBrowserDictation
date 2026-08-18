@@ -15,10 +15,10 @@ const tabId = Number.parseInt(pageParameters.get("tabId") ?? "", 10);
 // reports back. Closing the window without choosing would otherwise leave that
 // session waiting forever, and every later shortcut press would report "busy".
 let reportedResult = false;
-let permissionState = "requestable";
+let permissionDenied = false;
 
 requestButton.addEventListener("click", () => {
-  if (permissionState === MicrophoneAccessState.DENIED) {
+  if (permissionDenied) {
     void openMicrophoneSettings();
     return;
   }
@@ -58,7 +58,7 @@ void requestMicrophonePermission();
  * is granted for the extension origin, the offscreen recorder can use it.
  */
 async function requestMicrophonePermission() {
-  permissionState = "requesting";
+  permissionDenied = false;
   requestButton.disabled = true;
   requestButton.textContent = "Allow Microphone";
   statusElement.textContent = "Chrome should show a microphone permission prompt.";
@@ -74,17 +74,16 @@ async function requestMicrophonePermission() {
       granted: true
     });
 
-    permissionState = MicrophoneAccessState.GRANTED;
     statusElement.textContent = "Microphone access granted. Recording will continue on the original page.";
     window.setTimeout(() => window.close(), 900);
     return;
   }
 
-  permissionState = result.state;
+  permissionDenied = result.state === MicrophoneAccessState.DENIED;
   statusElement.textContent = result.error.message;
   requestButton.disabled = false;
 
-  if (result.state === MicrophoneAccessState.DENIED) {
+  if (permissionDenied) {
     requestButton.textContent = "Go to settings";
   }
 

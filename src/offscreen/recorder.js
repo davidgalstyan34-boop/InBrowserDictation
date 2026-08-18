@@ -27,7 +27,7 @@ const messageHandlers = Object.freeze({
   [MessageType.OFFSCREEN_STOP_RECORDING]: stopRecording
 });
 
-chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((rawMessage, _sender, sendResponse) => {
   const message = parseMessageEnvelope(rawMessage);
   const handler = message ? messageHandlers[message.type] : null;
 
@@ -42,9 +42,8 @@ chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
 /**
  * Requests microphone access and starts MediaRecorder for one session.
  *
- * The function stores the recorder, stream, and collected chunks in module
- * state because Chrome messages are stateless and start/stop arrive as
- * separate events.
+ * The function stores the recorder and its completion promise in module state
+ * because Chrome messages are stateless and start/stop arrive separately.
  */
 async function startRecording(message) {
   if (activeRecording) {
@@ -90,8 +89,6 @@ async function startRecording(message) {
       sessionId: message.sessionId,
       tabId: Number.isInteger(message.payload?.tabId) ? message.payload.tabId : null,
       recorder,
-      stream,
-      chunks,
       startedAt,
       completion,
       durationCapId: null
