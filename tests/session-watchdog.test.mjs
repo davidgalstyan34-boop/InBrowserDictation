@@ -1,9 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { DictationStatus } from "../src/shared/dictation-state.js";
-import { createSessionWatchdog } from "../src/background/controller/session-watchdog.js";
+import {
+  STATE_DEADLINES_MS,
+  createSessionWatchdog
+} from "../src/background/controller/session-watchdog.js";
 
 describe("session watchdog", () => {
+  it("expires provider states before Chrome's service-worker fetch limit", () => {
+    assert.equal(STATE_DEADLINES_MS[DictationStatus.TRANSCRIBING], 25_000);
+    assert.equal(STATE_DEADLINES_MS[DictationStatus.IMPROVING], 25_000);
+    assert.ok(STATE_DEADLINES_MS[DictationStatus.TRANSCRIBING] < 30_000);
+    assert.ok(STATE_DEADLINES_MS[DictationStatus.IMPROVING] < 30_000);
+  });
+
   it("fails a session that stays in a waiting state past its deadline", () => {
     const timers = createFakeTimers();
     const sessions = createFakeSessions({

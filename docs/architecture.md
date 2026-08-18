@@ -192,7 +192,7 @@ Two failure modes are handled explicitly, because both otherwise park the sessio
 
 No state is left waiting indefinitely:
 
-- A watchdog fails any session that stays in `STARTING`, `WAITING_FOR_MICROPHONE`, `STOPPING`, `TRANSCRIBING`, `IMPROVING`, or `INSERTING` past a per-state deadline. `RECORDING` is exempt because a long dictation is legitimate. A plain timer suffices: it only has to cover hangs while the worker is alive, and a suspended worker discards the session anyway.
+- A watchdog fails any session that stays in `STARTING`, `WAITING_FOR_MICROPHONE`, `STOPPING`, `TRANSCRIBING`, `IMPROVING`, or `INSERTING` past a per-state deadline. `RECORDING` is exempt because a long dictation is legitimate. Chrome can terminate an extension service worker when a `fetch()` response takes more than 30 seconds, so STT and LLM requests abort after 20 seconds and their state watchdogs expire after 25 seconds. This leaves time for provider-specific fallback and prevents a stale processing overlay from outliving the worker that owns it.
 - The popup exposes an explicit cancel for any busy state, since the shortcut only reports "busy" there.
 
 ## 7. Target Capture and Insertion Design

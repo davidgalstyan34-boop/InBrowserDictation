@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { audioPayloadToBlob } from "../src/background/providers/audio-payload.js";
 import {
+  DEFAULT_STT_TIMEOUT_MS,
   extractDeepgramTranscript,
   transcribeWithDeepgram
 } from "../src/background/providers/deepgram-transcriber.js";
@@ -12,6 +13,11 @@ const audio = Object.freeze({
 });
 
 describe("deepgram transcriber", () => {
+  it("times out before Chrome can terminate a slow service-worker fetch", () => {
+    assert.equal(DEFAULT_STT_TIMEOUT_MS, 20_000);
+    assert.ok(DEFAULT_STT_TIMEOUT_MS < 30_000);
+  });
+
   it("decodes recorder audio payloads into provider blobs", async () => {
     const blob = audioPayloadToBlob(audio);
 

@@ -4,14 +4,15 @@ import { DictationStatus } from "../../shared/dictation-state.js";
 //
 // RECORDING is deliberately absent: a long dictation is legitimate, and capping
 // recording length is a separate product decision rather than a stuck-state
-// guard. Provider states allow more than the 45s provider timeout so a provider
-// gets the chance to fail with its own, more specific message first.
+// guard. Provider requests abort after 20s and their state watchdogs fire after
+// 25s. Both deadlines stay below Chrome's 30s service-worker fetch limit, while
+// still letting provider code report its more specific timeout first.
 const STATE_DEADLINES_MS = Object.freeze({
   [DictationStatus.STARTING]: 20_000,
   [DictationStatus.WAITING_FOR_MICROPHONE]: 120_000,
   [DictationStatus.STOPPING]: 20_000,
-  [DictationStatus.TRANSCRIBING]: 60_000,
-  [DictationStatus.IMPROVING]: 60_000,
+  [DictationStatus.TRANSCRIBING]: 25_000,
+  [DictationStatus.IMPROVING]: 25_000,
   [DictationStatus.INSERTING]: 20_000
 });
 

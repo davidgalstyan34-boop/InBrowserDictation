@@ -6,7 +6,7 @@ import { createRequestSignal } from "./request-signal.js";
 
 const DEEPGRAM_LISTEN_URL = "https://api.deepgram.com/v1/listen";
 const DEFAULT_DEEPGRAM_MODEL = "nova-3";
-const DEFAULT_STT_TIMEOUT_MS = 45_000;
+export const DEFAULT_STT_TIMEOUT_MS = 20_000;
 
 /**
  * Deepgram-backed implementation of the speech-to-text provider.

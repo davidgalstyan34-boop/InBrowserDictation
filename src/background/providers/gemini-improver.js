@@ -18,7 +18,7 @@ export const GEMINI_REQUEST_SHAPES = Object.freeze([
   "camel-case-system-instruction",
   "inline-instructions"
 ]);
-const DEFAULT_LLM_TIMEOUT_MS = 45_000;
+export const DEFAULT_LLM_TIMEOUT_MS = 20_000;
 
 /**
  * Gemini Generate Content API implementation of text improvement.

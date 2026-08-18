@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   DEFAULT_GEMINI_MODEL,
+  DEFAULT_LLM_TIMEOUT_MS,
   FALLBACK_GEMINI_MODELS,
   extractGeminiOutputText,
   improveTextWithGemini
@@ -17,6 +18,11 @@ const style = Object.freeze({
 });
 
 describe("Gemini text improver", () => {
+  it("times out before Chrome can terminate a slow service-worker fetch", () => {
+    assert.equal(DEFAULT_LLM_TIMEOUT_MS, 20_000);
+    assert.ok(DEFAULT_LLM_TIMEOUT_MS < 30_000);
+  });
+
   it("builds prompt instructions that preserve transcript facts", () => {
     const prompt = buildTextImprovementPrompt({
       text: "call Alice on 2026-08-13 about ticket ABC-123",
