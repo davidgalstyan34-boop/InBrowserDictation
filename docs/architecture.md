@@ -109,8 +109,7 @@ Messages use a small protocol envelope:
   protocolVersion: 1,
   type: "content.prepareDictation",
   sessionId: "uuid",
-  payload: {},
-  sentAt: 123
+  payload: {}
 }
 ```
 
@@ -313,9 +312,9 @@ Built-in styles are code-defined and versioned. Custom styles are stored as norm
 
 The popup can clear the stored result on demand, so a user does not have to wait for the browser session to end to take it out of storage.
 
-The latest result is stored temporarily in `chrome.storage.session`. It includes the final text, raw transcript, style id, insertion metadata, and timestamps. It does not build a history.
+The latest result is stored temporarily in `chrome.storage.session`. It includes only the final text, raw transcript, and derived final-text length needed by the popup. It does not build a history.
 
-The record is written as soon as final text exists, before insertion is attempted, and rewritten afterwards with insertion metadata. Insertion is the step most likely to fail irrecoverably — a detached target plus a clipboard write the browser refuses — and nothing else holds that text, because overlays deliberately never echo it. Saving only on success would keep a record exactly when it is least needed.
+The record is written as soon as final text exists, before insertion is attempted. Insertion is the step most likely to fail irrecoverably — a detached target plus a clipboard write the browser refuses — and nothing else holds that text, because overlays deliberately never echo it. Saving only on success would keep a record exactly when it is least needed.
 
 ## 11. UI Surfaces
 
