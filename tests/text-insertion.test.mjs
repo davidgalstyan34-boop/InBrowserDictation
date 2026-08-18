@@ -15,6 +15,7 @@ describe("content text insertion", () => {
       element,
       selectionStart: 6,
       selectionEnd: 11,
+      valueAtCapture: "hello world",
       valueLength: 11
     }, "there", {
       clipboard: null
@@ -42,6 +43,7 @@ describe("content text insertion", () => {
       element,
       selectionStart: 0,
       selectionEnd: 3,
+      valueAtCapture: "old",
       valueLength: 3
     }, "final text", {
       clipboard: {
@@ -62,6 +64,31 @@ describe("content text insertion", () => {
     assert.equal(element.value, "changed");
   });
 
+  it("copies to clipboard when the target changed without changing length", async () => {
+    let copiedText = "";
+    const element = createTextControl({ value: "world" });
+
+    const result = await insertTextIntoCapturedTarget({
+      kind: "input",
+      element,
+      selectionStart: 5,
+      selectionEnd: 5,
+      valueAtCapture: "hello",
+      valueLength: 5
+    }, "final text", {
+      clipboard: {
+        writeText: async (text) => {
+          copiedText = text;
+        }
+      }
+    });
+
+    assert.equal(copiedText, "final text");
+    assert.equal(result.method, "clipboard");
+    assert.equal(result.fallbackReason, "INSERTION_TARGET_STALE");
+    assert.equal(element.value, "world");
+  });
+
   it("keeps successful text-control insertion when caret APIs are unavailable", async () => {
     const events = [];
     let copiedText = "";
@@ -78,6 +105,7 @@ describe("content text insertion", () => {
       element,
       selectionStart: 5,
       selectionEnd: 5,
+      valueAtCapture: "hello",
       valueLength: 5
     }, " world", {
       clipboard: {
@@ -223,6 +251,7 @@ describe("content text insertion", () => {
       element,
       selectionStart: 5,
       selectionEnd: 5,
+      valueAtCapture: "hello",
       valueLength: 5
     }, "final text", {
       clipboard: {

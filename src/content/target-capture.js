@@ -174,6 +174,9 @@ function captureTextControl(element, kind) {
     descriptor: describeElement(element),
     selectionStart: element.selectionStart,
     selectionEnd: element.selectionEnd,
+    // The exact value stays in this content-script-owned object and is never
+    // included in the serializable target summary sent to the service worker.
+    valueAtCapture: element.value,
     valueLength: element.value.length
   };
 }

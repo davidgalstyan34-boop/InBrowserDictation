@@ -43,6 +43,7 @@ class FakeTextArea extends FakeHTMLElement {}
 class FakeIFrame extends FakeHTMLElement {}
 
 let captureActiveTarget;
+let summarizeCapturedTarget;
 const originalGlobals = {};
 
 before(async () => {
@@ -56,7 +57,7 @@ before(async () => {
   globalThis.document = { activeElement: null, body: new FakeElement(), documentElement: new FakeElement() };
   globalThis.window = { getSelection: () => null };
 
-  ({ captureActiveTarget } = await import("../src/content/target-capture.js"));
+  ({ captureActiveTarget, summarizeCapturedTarget } = await import("../src/content/target-capture.js"));
 });
 
 after(() => {
@@ -79,7 +80,11 @@ describe("target capture", () => {
 
     assert.equal(target.kind, "input");
     assert.equal(target.element, input);
+    assert.equal(target.valueAtCapture, "hello");
     assert.equal(target.valueLength, 5);
+
+    const summary = summarizeCapturedTarget(target);
+    assert.equal(Object.hasOwn(summary, "valueAtCapture"), false);
   });
 
   it("descends through an open shadow root to the real editor", () => {

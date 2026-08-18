@@ -212,7 +212,8 @@ For `input` and `textarea`:
 
 - reject password, hidden, disabled, and readonly fields;
 - store element reference in the content script;
-- store selection start/end and value length;
+- store selection start/end, value length, and an exact value snapshot that remains private to the content script;
+- reject insertion when the live value differs from that private snapshot, including edits that preserve the original length;
 - insert by replacing the captured selection and dispatching `input`.
 
 For `contenteditable`:

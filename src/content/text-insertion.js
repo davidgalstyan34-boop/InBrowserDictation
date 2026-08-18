@@ -116,7 +116,7 @@ function insertIntoTextControl(target, text, environment) {
     );
   }
 
-  if (Number.isInteger(target.valueLength) && target.valueLength !== element.value.length) {
+  if (typeof target.valueAtCapture !== "string" || target.valueAtCapture !== element.value) {
     throw createInsertionError(
       "INSERTION_TARGET_STALE",
       "The captured target changed before insertion."
